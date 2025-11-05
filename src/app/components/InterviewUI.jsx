@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Button from './ui/Button';
 import Card from './ui/Card';
 
-export default function InterviewUI({ questions, onComplete }) {
+export default function InterviewUI({ questions, onComplete, tonePreference = 'friendly' }) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
@@ -37,9 +37,29 @@ export default function InterviewUI({ questions, onComplete }) {
 
     const utterance = new SpeechSynthesisUtterance(processedText);
     utterance.lang = 'ko-KR';
-    utterance.rate = 0.85;
-    utterance.pitch = 0.95;
-    utterance.volume = 1.0;
+    
+    // 말투 설정에 따른 TTS 파라미터 조정
+    if (tonePreference === 'friendly') {
+      // 친근하고 격려하는 톤: 조금 느리고 부드러운 톤
+      utterance.rate = 0.85;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+    } else if (tonePreference === 'professional') {
+      // 전문적이고 명확한 톤: 보통 속도, 중간 톤
+      utterance.rate = 0.95;
+      utterance.pitch = 0.9;
+      utterance.volume = 1.0;
+    } else if (tonePreference === 'formal') {
+      // 격식 있고 정중한 톤: 약간 느리고 낮은 톤
+      utterance.rate = 0.8;
+      utterance.pitch = 0.85;
+      utterance.volume = 1.0;
+    } else {
+      // 기본값
+      utterance.rate = 0.85;
+      utterance.pitch = 0.95;
+      utterance.volume = 1.0;
+    }
 
     const voices = window.speechSynthesis.getVoices();
     let selectedVoice = voices.find(voice => 

@@ -19,6 +19,32 @@ export async function POST(request) {
 
     let analysisResult;
 
+    // [유효성 검사] transcript가 비어있거나 너무 짧으면 즉시 반환
+    const trimmedTranscript = transcript ? transcript.trim() : '';
+    
+    // null, undefined, 빈 문자열 체크
+    if (!trimmedTranscript || trimmedTranscript.length === 0) {
+      return NextResponse.json({
+        contentFeedback: {
+          advice: '답변이 감지되지 않았습니다. 다시 한번 말씀해 주시겠어요?'
+        }
+      });
+    }
+
+    // 15자 미만의 매우 짧거나 의미 없는 답변 체크
+    const meaninglessPatterns = ['...', '글쎄요', '모르겠습니다', '잘 모르겠어요', '음', '어'];
+    const isMeaningless = meaninglessPatterns.some(pattern => 
+      trimmedTranscript.toLowerCase().includes(pattern)
+    );
+
+    if (trimmedTranscript.length < 15 || isMeaningless) {
+      return NextResponse.json({
+        contentFeedback: {
+          advice: '답변이 너무 짧거나 명확하지 않습니다. 좀 더 구체적으로 답변해 주시겠어요?'
+        }
+      });
+    }
+
     if (!llmApiKey) {
       // LLM API가 설정되지 않은 경우 샘플 응답
       console.warn('LLM_API_KEY not set. Returning sample content feedback.');
@@ -52,6 +78,32 @@ export async function POST(request) {
         const transcriptionData = await transcriptionResponse.json();
         const whisperTranscript = transcriptionData.text || transcript;
 
+        // [유효성 검사] Whisper API 결과도 재검사 (더 정확한 전사 결과)
+        const whisperTrimmed = whisperTranscript ? whisperTranscript.trim() : '';
+        
+        // null, undefined, 빈 문자열 체크
+        if (!whisperTrimmed || whisperTrimmed.length === 0) {
+          return NextResponse.json({
+            contentFeedback: {
+              advice: '답변이 감지되지 않았습니다. 다시 한번 말씀해 주시겠어요?'
+            }
+          });
+        }
+
+        // 15자 미만의 매우 짧거나 의미 없는 답변 체크
+        const meaninglessPatterns = ['...', '글쎄요', '모르겠습니다', '잘 모르겠어요', '음', '어'];
+        const isMeaningless = meaninglessPatterns.some(pattern => 
+          whisperTrimmed.toLowerCase().includes(pattern)
+        );
+
+        if (whisperTrimmed.length < 15 || isMeaningless) {
+          return NextResponse.json({
+            contentFeedback: {
+              advice: '답변이 너무 짧거나 명확하지 않습니다. 좀 더 구체적으로 답변해 주시겠어요?'
+            }
+          });
+        }
+
         // LLM 프롬프트 - 답변 내용만 평가 (점수 및 STAR 기법 제거)
         const llmPrompt = `
   You are an expert interview coach. Analyze the user's answer based *only* on its CONTENT.
@@ -60,7 +112,7 @@ export async function POST(request) {
 
   **Question:** "${question}"
   
-  **User's Answer (Transcript):** "${whisperTranscript}"
+  **User's Answer (Transcript):** "${whisperTrimmed}"
 
   Provide feedback in Korean as a JSON object with one main key: 'contentFeedback'.
   The feedback should be *only* constructive advice focused on the substance and clarity of the answer.

@@ -20,6 +20,7 @@ export default function InterviewPage() {
   const [questions, setQuestions] = useState(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [tonePreference, setTonePreference] = useState('friendly'); // 말투 설정
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -32,6 +33,14 @@ export default function InterviewPage() {
       if (!user) return;
 
       try {
+        // 사용자 말투 설정 불러오기
+        const preferencesResponse = await fetch(`/api/user/preferences?userId=${user.uid}`);
+        if (preferencesResponse.ok) {
+          const preferencesData = await preferencesResponse.json();
+          setTonePreference(preferencesData.tone_preference || 'friendly');
+          console.log('말투 설정 불러옴:', preferencesData.tone_preference);
+        }
+
         const feedbacksRef = collection(db, 'feedbacks');
         const q = query(
           feedbacksRef,
@@ -183,7 +192,11 @@ export default function InterviewPage() {
         )}
 
         {step === 'interview' && questions && (
-          <InterviewUI questions={questions} onComplete={handleInterviewComplete} />
+          <InterviewUI 
+            questions={questions} 
+            onComplete={handleInterviewComplete}
+            tonePreference={tonePreference}
+          />
         )}
 
         {step === 'complete' && (
