@@ -317,7 +317,7 @@ export default function AudioRecorder({ userId, onComplete, onRetry }) {
             <h3 className="text-xl font-bold text-gray-800 mb-2">음성으로 피드백 받기</h3>
             <p className="text-gray-600 text-sm">
               궁금한 점이나 고민을 자유롭게 말씀해주세요.<br />
-              예: "자소서가 너무 추상적인 것 같아요", "공고와 연결성을 높이고 싶어요"
+              예: &ldquo;자소서가 너무 추상적인 것 같아요&rdquo;, &ldquo;공고와 연결성을 높이고 싶어요&rdquo;
             </p>
           </div>
           <Button onClick={startRecording} fullWidth>
@@ -336,7 +336,7 @@ export default function AudioRecorder({ userId, onComplete, onRetry }) {
             <h3 className="text-xl font-bold text-gray-800 mb-2">녹음 중...</h3>
             <div className="text-3xl font-bold text-red-600 mb-2">{formatTime(recordingTime)}</div>
             <p className="text-gray-600 text-sm">
-              자유롭게 말씀하세요. 끝나면 "녹음 종료"를 눌러주세요.
+              자유롭게 말씀하세요. 끝나면 &ldquo;녹음 종료&rdquo;를 눌러주세요.
             </p>
           </div>
           <Button onClick={stopRecording} variant="danger" fullWidth>
@@ -364,7 +364,7 @@ export default function AudioRecorder({ userId, onComplete, onRetry }) {
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
               <p className="text-sm text-gray-600 mb-2">말씀하신 내용이</p>
-              <p className="text-lg font-bold text-gray-800 mb-2">"{summary}"</p>
+              <p className="text-lg font-bold text-gray-800 mb-2">&ldquo;{summary}&rdquo;</p>
               <p className="text-sm text-gray-600">으로 이해했어요. 이대로 피드백을 진행할까요?</p>
             </div>
 

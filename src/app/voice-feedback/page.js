@@ -157,7 +157,7 @@ export default function VoiceFeedbackPage() {
             <div className="text-center py-12">
               <Loading size="lg" text="AI가 피드백을 생성하고 있어요..." />
               <p className="text-gray-500 text-sm mt-4">
-                "{summary}"를 바탕으로 맞춤 조언을 준비 중입니다
+                &ldquo;{summary}&rdquo;를 바탕으로 맞춤 조언을 준비 중입니다
               </p>
             </div>
           </Card>
