@@ -126,29 +126,42 @@ export default function DashboardPage() {
           </Card>
         </div>
 
+        {/* 2개의 핵심 기능 - 큰 카드 */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold text-gray-800 mb-6">취업 준비 시작하기</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card hover onClick={() => router.push('/interview')} className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-primary-200">
+              <div className="text-center py-6">
+                <div className="text-6xl mb-4">🎤</div>
+                <h3 className="text-2xl font-bold text-gray-800 mb-3">모의 면접</h3>
+                <p className="text-gray-600 mb-6">
+                  실전 같은 AI 모의 면접으로 답변 능력을 향상시키세요.<br />
+                  질문을 듣고 음성으로 답변하면 즉시 피드백을 받을 수 있습니다.
+                </p>
+                <Button fullWidth className="bg-primary-600 hover:bg-primary-700 text-lg py-3">
+                  모의 면접 시작하기 →
+                </Button>
+              </div>
+            </Card>
+
+            <Card hover onClick={() => router.push('/resume')} className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200">
+              <div className="text-center py-6">
+                <div className="text-6xl mb-4">📝</div>
+                <h3 className="text-2xl font-bold text-gray-800 mb-3">자기소개서 피드백</h3>
+                <p className="text-gray-600 mb-6">
+                  채용 공고를 분석하고 자기소개서를 첨삭해드립니다.<br />
+                  AI가 구체적이고 실용적인 개선점을 제안합니다.
+                </p>
+                <Button fullWidth className="bg-green-600 hover:bg-green-700 text-lg py-3">
+                  자기소개서 피드백 받기 →
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </div>
+
+        {/* 부가 기능 - 작은 카드 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card hover onClick={() => router.push('/new-feedback')}>
-            <div className="flex items-center mb-4">
-              <div className="text-4xl mr-4">📝</div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-800">자기소개서 첨삭</h3>
-                <p className="text-gray-600 text-sm">AI가 자기소개서를 분석하고 개선점을 제안합니다</p>
-              </div>
-            </div>
-            <Button fullWidth>시작하기</Button>
-          </Card>
-
-          <Card hover onClick={() => router.push('/interview')}>
-            <div className="flex items-center mb-4">
-              <div className="text-4xl mr-4">🎤</div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-800">모의 면접</h3>
-                <p className="text-gray-600 text-sm">실전 같은 AI 모의 면접으로 준비하세요</p>
-              </div>
-            </div>
-            <Button fullWidth>시작하기</Button>
-          </Card>
-
           <Card hover onClick={() => router.push('/history')}>
             <div className="flex items-center mb-4">
               <div className="text-4xl mr-4">📊</div>

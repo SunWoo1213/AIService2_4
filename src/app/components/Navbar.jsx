@@ -32,17 +32,11 @@ export default function Navbar() {
                 <Link href="/dashboard" className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium">
                   대시보드
                 </Link>
-                <Link href="/profile" className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium">
-                  프로필
-                </Link>
-                <Link href="/new-feedback" className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium">
-                  새 피드백
-                </Link>
-                <Link href="/voice-feedback" className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium">
-                  🎤 음성 피드백
-                </Link>
                 <Link href="/interview" className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium">
-                  모의 면접
+                  🎤 모의 면접
+                </Link>
+                <Link href="/resume" className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium">
+                  📝 자기소개서 피드백
                 </Link>
                 <Link href="/history" className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium">
                   히스토리

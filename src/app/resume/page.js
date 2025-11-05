@@ -10,7 +10,7 @@ import JobUploader from '../components/JobUploader';
 import ResumeEditor from '../components/ResumeEditor';
 import Loading from '../components/ui/Loading';
 
-export default function NewFeedbackPage() {
+export default function ResumeFeedbackPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [step, setStep] = useState(1);
@@ -95,7 +95,7 @@ export default function NewFeedbackPage() {
       
       <main className="max-w-4xl mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">자기소개서 첨삭</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">자기소개서 피드백</h1>
           <p className="text-gray-600">
             채용 공고를 분석하고 자기소개서에 대한 AI 피드백을 받아보세요.
           </p>
