@@ -83,6 +83,31 @@ export default function FeedbackDetailPage({ params }) {
           <FeedbackDisplay feedback={feedback.feedback} />
         )}
 
+        {feedback.type === 'voice' && feedback.structured_feedback && (
+          <>
+            <FeedbackDisplay feedback={feedback.structured_feedback} isStructured={true} />
+            
+            {/* 음성 피드백 평가 */}
+            {!feedback.user_rating && (
+              <div className="mt-8">
+                <div className="bg-white border border-gray-300 rounded-lg p-6">
+                  <h4 className="text-lg font-bold text-gray-800 mb-4 text-center">이 피드백이 충분했나요?</h4>
+                  <div className="flex gap-4 justify-center">
+                    <button className="flex items-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors">
+                      <span className="text-xl">👍</span>
+                      유용했어요
+                    </button>
+                    <button className="flex items-center gap-2 px-6 py-3 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">
+                      <span className="text-xl">👎</span>
+                      아쉬워요
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
         {feedback.type === 'interview' && (
           <div className="space-y-6">
             {feedback.interviewResults && feedback.interviewResults.map((result, index) => (
