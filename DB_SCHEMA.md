@@ -237,3 +237,4 @@ exports.cleanupExpiredTranscriptions = functions.pubsub
 - voice_transcriptions는 만료 시간 인덱스 필요
 - feedbacks는 기존 인덱스 활용 (userId + createdAt)
 
+

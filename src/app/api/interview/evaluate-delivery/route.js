@@ -25,8 +25,7 @@ export async function POST(request) {
       
       analysisResult = {
         contentFeedback: {
-          score: 7,
-          advice: '답변 내용이 질문과 관련이 있습니다. STAR 기법(상황-과제-행동-결과)을 활용하여 구체적인 예시를 더 추가하면 더욱 설득력 있는 답변이 될 것입니다.'
+          advice: '답변 내용이 질문과 관련이 있습니다. 구체적인 예시와 경험의 결과를 더 추가하면 더욱 설득력 있는 답변이 될 것입니다.'
         }
       };
     } else {
@@ -53,26 +52,30 @@ export async function POST(request) {
         const transcriptionData = await transcriptionResponse.json();
         const whisperTranscript = transcriptionData.text || transcript;
 
-        // LLM 프롬프트 - 답변 내용만 평가
-        const llmPrompt = `You are an expert interview coach. Analyze the user's answer based *only* on its CONTENT.
+        // LLM 프롬프트 - 답변 내용만 평가 (점수 및 STAR 기법 제거)
+        const llmPrompt = `
+  You are an expert interview coach. Analyze the user's answer based *only* on its CONTENT.
+  Do NOT provide a numerical score.
+  Do NOT mention the "STAR method" or any other specific named technique.
 
-**Question:** "${question}"
+  **Question:** "${question}"
+  
+  **User's Answer (Transcript):** "${whisperTranscript}"
 
-**User's Answer (Transcript):** "${whisperTranscript}"
+  Provide feedback in Korean as a JSON object with one main key: 'contentFeedback'.
+  The feedback should be *only* constructive advice focused on the substance and clarity of the answer.
 
-Provide feedback in Korean as a JSON object with one main key: 'contentFeedback'.
-
-**1. contentFeedback:**
-   * Evaluate the *substance* of the answer. Was it relevant to the question, clear, and well-structured?
-   * Provide a score (1-10) and specific, constructive advice for improvement.
-
-Example JSON format:
-{
-  "contentFeedback": {
-    "score": 8,
-    "advice": "답변 내용이 질문의 의도와 잘 맞습니다. STAR 기법의 'Result' 부분이 포함되면 더욱 완벽할 것 같습니다."
+  **1. contentFeedback:**
+     * Evaluate the *substance* of the answer. Was it relevant to the question, clear, and well-structured?
+     * Provide specific, constructive advice for improvement as a single string.
+  
+  Example JSON format:
+  {
+    "contentFeedback": {
+      "advice": "답변 내용이 질문의 의도와 잘 맞습니다. 다만, 경험에 대한 '결과'나 '배운 점'을 조금 더 구체적으로 추가하면 답변이 훨씬 풍부해질 것 같습니다."
+    }
   }
-}`;
+`;
 
         // LLM API 호출
         const llmResponse = await fetch(`${llmApiUrl}/chat/completions`, {
@@ -112,8 +115,7 @@ Example JSON format:
         // 폴백: 기본 피드백 제공
         analysisResult = {
           contentFeedback: {
-            score: 6,
-            advice: '답변 내용이 질문과 관련이 있습니다. 더 구체적인 예시를 추가하고 STAR 기법을 활용하면 더 좋은 답변이 될 것입니다.'
+            advice: '답변 내용이 질문과 관련이 있습니다. 더 구체적인 예시와 경험의 배경, 행동, 결과를 추가하면 더 좋은 답변이 될 것입니다.'
           }
         };
       }
