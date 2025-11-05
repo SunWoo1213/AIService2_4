@@ -204,11 +204,13 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
       mediaRecorderRef.current.start();
 
       // SpeechRecognition (백그라운드 - API 전송용)
+      // 사용자가 답변 완료 버튼을 누를 때까지 계속 녹음
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.lang = 'ko-KR';
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
+      recognitionRef.current.continuous = true; // 연속 녹음 활성화
+      recognitionRef.current.interimResults = true; // 중간 결과 표시
+      recognitionRef.current.maxAlternatives = 1; // 최적화
 
       recognitionRef.current.onresult = (event) => {
         for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -216,34 +218,64 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
           
           if (event.results[i].isFinal) {
             finalTranscriptRef.current += transcript + ' ';
-            console.log('음성 인식 (백그라운드):', transcript);
+            console.log('음성 인식 (최종):', transcript);
+          } else {
+            // 중간 결과도 로깅 (디버깅용)
+            console.log('음성 인식 (중간):', transcript);
           }
         }
       };
 
       recognitionRef.current.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
+        
+        // no-speech 에러는 침묵일 때 발생하지만, 계속 녹음해야 함
         if (['no-speech', 'audio-capture', 'aborted'].includes(event.error)) {
-          console.log('무시 가능한 에러:', event.error);
+          console.log('일시적 에러 (무시):', event.error);
+          // 자동 재시작하도록 onend에서 처리됨
           return;
         }
+        
         if (event.error === 'not-allowed') {
           alert('마이크 권한이 거부되었습니다. 브라우저 설정에서 마이크 권한을 허용해주세요.');
+          isRecordingRef.current = false;
+          setIsRecording(false);
         }
       };
 
-      // 음성 인식 자동 재시작
+      // 음성 인식 자동 재시작 (정적 감지로 중단되어도 계속 녹음)
       recognitionRef.current.onend = () => {
+        console.log('Speech recognition ended, 재시작 시도...');
+        
+        // 사용자가 답변 완료 버튼을 누르지 않았다면 계속 녹음
         if (isRecordingRef.current) {
           setTimeout(() => {
             if (isRecordingRef.current && recognitionRef.current) {
               try {
+                console.log('Speech recognition 재시작 중...');
                 recognitionRef.current.start();
               } catch (error) {
-                console.error('음성 인식 재시작 실패:', error);
+                // 이미 시작된 경우 발생하는 에러 무시
+                if (error.message && error.message.includes('already started')) {
+                  console.log('이미 시작됨, 무시');
+                } else {
+                  console.error('음성 인식 재시작 실패:', error);
+                  // 재시도
+                  setTimeout(() => {
+                    if (isRecordingRef.current && recognitionRef.current) {
+                      try {
+                        recognitionRef.current.start();
+                      } catch (e) {
+                        console.error('재시도 실패:', e);
+                      }
+                    }
+                  }, 300);
+                }
               }
             }
           }, 100);
+        } else {
+          console.log('녹음 중지됨, 재시작하지 않음');
         }
       };
 
@@ -348,46 +380,6 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
     }
   };
 
-  const handleSkip = () => {
-    isRecordingRef.current = false;
-    setIsRecording(false);
-    recordingStartTimeRef.current = null;
-    
-    if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
-    }
-
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    if (audioStreamRef.current) {
-      audioStreamRef.current.getTracks().forEach(track => track.stop());
-      audioStreamRef.current = null;
-    }
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
-
-    finalTranscriptRef.current = '';
-    
-    const newResult = {
-      question: questions[currentQuestionIndex].question,
-      userAnswer: '건너뜀',
-      contentAdvice: '답변을 건너뛰었습니다.',
-      contentScore: null,
-    };
-
-    const updatedResults = [...results, newResult];
-    setResults(updatedResults);
-
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-    } else {
-      if (onComplete) {
-        onComplete(updatedResults);
-      }
-    }
-  };
 
   if (!questions || questions.length === 0) {
     return <div>질문을 불러오는 중...</div>;
@@ -456,9 +448,15 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
               <span className="text-2xl mr-2">🎙️</span>
               <span className="font-bold">녹음 중...</span>
             </div>
-            <p className="text-sm text-gray-600 mt-3">
-              답변이 끝나면 &ldquo;답변 완료&rdquo; 버튼을 눌러주세요
-            </p>
+            <div className="mt-4 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-800 font-semibold mb-1">
+                💡 중요: 잠시 멈추셔도 괜찮습니다
+              </p>
+              <p className="text-xs text-blue-700">
+                생각할 시간이 필요하면 잠시 멈추셔도 녹음은 계속됩니다.<br />
+                답변이 완전히 끝나면 아래 <strong>&ldquo;답변 완료&rdquo;</strong> 버튼을 눌러주세요.
+              </p>
+            </div>
           </div>
         )}
 
@@ -470,26 +468,20 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
         )}
 
         {/* Controls */}
-        <div className="flex gap-4">
-          {isRecording ? (
+        {isRecording && (
+          <div className="space-y-3">
             <Button
               onClick={handleStopRecording}
               fullWidth
-              className="bg-green-600 hover:bg-green-700"
+              className="bg-green-600 hover:bg-green-700 text-lg py-4 font-bold shadow-lg"
             >
               ✅ 답변 완료
             </Button>
-          ) : (
-            <Button
-              onClick={handleSkip}
-              variant="secondary"
-              fullWidth
-              disabled={!isTimerRunning}
-            >
-              건너뛰기
-            </Button>
-          )}
-        </div>
+            <p className="text-xs text-center text-gray-500">
+              답변이 모두 끝났다면 위 버튼을 눌러주세요
+            </p>
+          </div>
+        )}
         
         {!isRecording && timeLeft > 0 && (
           <p className="text-sm text-gray-500 text-center mt-3">
