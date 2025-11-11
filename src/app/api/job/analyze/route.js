@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 
+// ===== [타임아웃 해결] Next.js API Route 최대 실행 시간 설정 =====
+export const maxDuration = 60; // 60초
+
 export async function POST(request) {
   try {
     const { jobText } = await request.json();

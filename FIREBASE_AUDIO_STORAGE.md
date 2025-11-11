@@ -307,3 +307,4 @@ NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
 **마지막 업데이트:** 2025-11-11
 **버전:** 1.0
 
+

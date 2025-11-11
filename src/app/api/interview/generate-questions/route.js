@@ -1,8 +1,23 @@
 import { NextResponse } from 'next/server';
 
+// ===== [타임아웃 해결] Next.js API Route 최대 실행 시간 설정 =====
+// Vercel: 10초(Hobby) / 60초(Pro) / 900초(Enterprise)
+// 이 설정으로 타임아웃을 명시적으로 제어합니다
+export const maxDuration = 60; // 60초
+
 export async function POST(request) {
   try {
+    console.log('[DIAG] 다음 질문 생성 API 호출 시작:', new Date().toISOString());
+    
     const { jobKeywords, resumeText, previousAnswer, previousQuestion, questionCount = 0, streaming = false } = await request.json();
+    
+    console.log('[DIAG] 요청 파라미터:', {
+      hasJobKeywords: !!jobKeywords,
+      resumeTextLength: resumeText?.length || 0,
+      hasPreviousAnswer: !!previousAnswer,
+      questionCount,
+      streaming
+    });
 
     if (!jobKeywords || !resumeText) {
       return NextResponse.json(
@@ -10,6 +25,24 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+
+    // ===== [타임아웃 해결] 프롬프트 길이 최적화 =====
+    // resumeText가 너무 길면 LLM 처리 시간이 오래 걸려 타임아웃 발생 가능
+    // 최대 3000자로 제한 (약 1000 토큰)
+    const MAX_RESUME_LENGTH = 3000;
+    const optimizedResumeText = resumeText.length > MAX_RESUME_LENGTH 
+      ? resumeText.substring(0, MAX_RESUME_LENGTH) + '...(생략)'
+      : resumeText;
+    
+    if (resumeText.length > MAX_RESUME_LENGTH) {
+      console.log(`[DIAG] resumeText 길이 최적화: ${resumeText.length} → ${MAX_RESUME_LENGTH}`);
+    }
+
+    // previousAnswer도 최적화 (최대 1000자)
+    const MAX_ANSWER_LENGTH = 1000;
+    const optimizedPreviousAnswer = previousAnswer && previousAnswer.length > MAX_ANSWER_LENGTH
+      ? previousAnswer.substring(0, MAX_ANSWER_LENGTH) + '...(생략)'
+      : previousAnswer;
 
     let prompt;
     
@@ -19,11 +52,11 @@ export async function POST(request) {
 
 **Job Posting**: ${JSON.stringify(jobKeywords)}
 
-**Candidate's Resume**: ${resumeText}
+**Candidate's Resume**: ${optimizedResumeText}
 
 **Previous Question**: ${previousQuestion}
 
-**Candidate's Previous Answer**: ${previousAnswer}
+**Candidate's Previous Answer**: ${optimizedPreviousAnswer}
 
 Generate ONE follow-up question that:
 1. Critically examines or probes deeper into their previous answer
@@ -43,7 +76,7 @@ Provide ONLY the JSON object, no additional text.`;
 
 **Job Posting**: ${JSON.stringify(jobKeywords)}
 
-**Candidate's Resume**: ${resumeText}
+**Candidate's Resume**: ${optimizedResumeText}
 
 Generate ONE initial interview question focused on their major and technical skills. The question should be open-ended and allow the candidate to showcase their experience.
 
@@ -86,32 +119,51 @@ Provide ONLY the JSON object, no additional text. Questions should be in Korean.
     } else {
       // 스트리밍 모드
       if (streaming) {
-        const llmResponse = await fetch(llmApiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${llmApiKey}`
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o',
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a professional interviewer. Always respond with valid JSON only.'
-              },
-              {
-                role: 'user',
-                content: prompt
-              }
-            ],
-            temperature: 0.8,
-            max_tokens: 500,
-            stream: true // 스트리밍 활성화
-          })
-        });
+        console.log('[DIAG] 다음 질문 생성 LLM 호출 시작 (스트리밍):', new Date().toISOString());
+        
+        // ===== [타임아웃 해결] LLM API 호출에 타임아웃 설정 =====
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 45000); // 45초 타임아웃
+        
+        try {
+          const llmResponse = await fetch(llmApiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${llmApiKey}`
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o',
+              messages: [
+                {
+                  role: 'system',
+                  content: 'You are a professional interviewer. Always respond with valid JSON only.'
+                },
+                {
+                  role: 'user',
+                  content: prompt
+                }
+              ],
+              temperature: 0.8,
+              max_tokens: 500,
+              stream: true // 스트리밍 활성화
+            }),
+            signal: controller.signal // 타임아웃 시그널 추가
+          });
+          
+          clearTimeout(timeoutId); // 성공 시 타임아웃 해제
+          console.log('[DIAG] LLM API 응답 수신 완료:', new Date().toISOString());
 
-        if (!llmResponse.ok) {
-          throw new Error('LLM API 호출 실패');
+          if (!llmResponse.ok) {
+            throw new Error('LLM API 호출 실패');
+          }
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          if (fetchError.name === 'AbortError') {
+            console.error('[DIAG] LLM API 타임아웃 (45초 초과)');
+            throw new Error('LLM API 호출 시간 초과 (45초)');
+          }
+          throw fetchError;
         }
 
         // SSE (Server-Sent Events) 형식으로 스트리밍
@@ -175,43 +227,62 @@ Provide ONLY the JSON object, no additional text. Questions should be in Korean.
         });
       } else {
         // 기존 비스트리밍 모드 (폴백)
-        const llmResponse = await fetch(llmApiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${llmApiKey}`
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o',
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a professional interviewer. Always respond with valid JSON only.'
-              },
-              {
-                role: 'user',
-                content: prompt
-              }
-            ],
-            temperature: 0.8,
-            max_tokens: 500
-          })
-        });
-
-        if (!llmResponse.ok) {
-          throw new Error('LLM API 호출 실패');
-        }
-
-        const llmData = await llmResponse.json();
-        const content = llmData.choices[0].message.content;
+        console.log('[DIAG] 다음 질문 생성 LLM 호출 시작 (비스트리밍):', new Date().toISOString());
         
-        // JSON 객체 파싱 (배열이 아닌 단일 객체)
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-          throw new Error('Invalid JSON response from LLM');
-        }
+        // ===== [타임아웃 해결] LLM API 호출에 타임아웃 설정 =====
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 45000); // 45초 타임아웃
         
-        question = JSON.parse(jsonMatch[0]);
+        try {
+          const llmResponse = await fetch(llmApiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${llmApiKey}`
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o',
+              messages: [
+                {
+                  role: 'system',
+                  content: 'You are a professional interviewer. Always respond with valid JSON only.'
+                },
+                {
+                  role: 'user',
+                  content: prompt
+                }
+              ],
+              temperature: 0.8,
+              max_tokens: 500
+            }),
+            signal: controller.signal // 타임아웃 시그널 추가
+          });
+          
+          clearTimeout(timeoutId);
+          console.log('[DIAG] 다음 질문 생성 LLM 호출 완료:', new Date().toISOString());
+
+          if (!llmResponse.ok) {
+            throw new Error('LLM API 호출 실패');
+          }
+
+          const llmData = await llmResponse.json();
+          const content = llmData.choices[0].message.content;
+        
+          // JSON 객체 파싱 (배열이 아닌 단일 객체)
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) {
+            throw new Error('Invalid JSON response from LLM');
+          }
+          
+          question = JSON.parse(jsonMatch[0]);
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          if (fetchError.name === 'AbortError') {
+            console.error('[DIAG] LLM API 타임아웃 (45초 초과)');
+            throw new Error('LLM API 호출 시간 초과 (45초)');
+          }
+          throw fetchError;
+        }
       }
     }
 
