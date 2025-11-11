@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/firebase/config';
 import Navbar from '../../components/Navbar';
 import FeedbackDisplay from '../../components/FeedbackDisplay';
@@ -23,34 +23,44 @@ export default function FeedbackDetailPage({ params }) {
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    const fetchFeedback = async () => {
-      if (!user) return;
+    if (!user) return;
 
-      try {
-        const docRef = doc(db, 'feedbacks', params.id);
-        const docSnap = await getDoc(docRef);
-        
+    setLoading(true);
+    const docRef = doc(db, 'feedbacks', params.id);
+
+    // onSnapshot 실시간 리스너 설정
+    const unsubscribe = onSnapshot(
+      docRef,
+      (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
+          
+          // 권한 확인
           if (data.userId !== user.uid) {
             alert('접근 권한이 없습니다.');
             router.push('/dashboard');
             return;
           }
+          
+          // 데이터 업데이트 (실시간으로 반영됨)
           setFeedback(data);
+          setLoading(false);
         } else {
           alert('피드백을 찾을 수 없습니다.');
           router.push('/dashboard');
         }
-      } catch (error) {
+      },
+      (error) => {
         console.error('Error fetching feedback:', error);
         alert('피드백을 불러오는 중 오류가 발생했습니다.');
-      } finally {
         setLoading(false);
       }
-    };
+    );
 
-    fetchFeedback();
+    // 클린업 함수: 컴포넌트 언마운트 시 리스너 구독 해제
+    return () => {
+      unsubscribe();
+    };
   }, [user, params.id, router]);
 
   if (authLoading || loading) {
@@ -110,51 +120,75 @@ export default function FeedbackDetailPage({ params }) {
 
         {feedback.type === 'interview' && (
           <div className="space-y-6">
-            {feedback.interviewResults && feedback.interviewResults.map((result, index) => (
-              <div key={index} className="bg-white rounded-xl shadow-md p-6">
-                <h3 className="text-lg font-bold text-gray-800 mb-3">
-                  질문 {index + 1}
-                </h3>
-                <div className="mb-3">
-                  <p className="text-gray-700 font-medium">{result.question}</p>
-                </div>
-                <div className="mb-3">
-                  <span className="text-sm font-medium text-gray-600">당신의 답변:</span>
-                  <p className="text-gray-700 mt-1 whitespace-pre-wrap">{result.userAnswer}</p>
-                </div>
+            {feedback.interviewResults && feedback.interviewResults.map((result, index) => {
+              // 피드백이 진행 중인지 확인
+              const isFeedbackPending = 
+                !result.feedback || 
+                result.feedback === '평가 중...' || 
+                result.contentAdvice === '평가 중...' ||
+                (!result.contentScore && !result.contentAdvice && !result.feedback);
 
-                {/* 오디오 플레이어 */}
-                {result.audioURL && (
-                  <div className="mb-4">
-                    <span className="text-sm font-medium text-gray-600 mb-2 block">🎧 녹음 듣기</span>
-                    <audio 
-                      controls 
-                      className="w-full"
-                      style={{ height: '40px' }}
-                    >
-                      <source src={result.audioURL} type="audio/webm" />
-                      <source src={result.audioURL} type="audio/mp4" />
-                      브라우저가 오디오 재생을 지원하지 않습니다.
-                    </audio>
+              return (
+                <div key={index} className="bg-white rounded-xl shadow-md p-6">
+                  <h3 className="text-lg font-bold text-gray-800 mb-3">
+                    질문 {index + 1}
+                  </h3>
+                  <div className="mb-3">
+                    <p className="text-gray-700 font-medium">{result.question}</p>
                   </div>
-                )}
+                  <div className="mb-3">
+                    <span className="text-sm font-medium text-gray-600">당신의 답변:</span>
+                    <p className="text-gray-700 mt-1 whitespace-pre-wrap">{result.userAnswer}</p>
+                  </div>
 
-                {/* 내용 평가 */}
-                <div className="border-t pt-3 mb-4 bg-blue-50 -mx-6 px-6 pb-3 rounded-b-xl">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-semibold text-gray-700">📝 내용 피드백</span>
-                    {result.contentScore && (
-                      <span className="text-lg font-bold text-primary-600">
-                        {result.contentScore}/10점
-                      </span>
+                  {/* 오디오 플레이어 */}
+                  {result.audioURL && (
+                    <div className="mb-4">
+                      <span className="text-sm font-medium text-gray-600 mb-2 block">🎧 녹음 듣기</span>
+                      <audio 
+                        controls 
+                        className="w-full"
+                        style={{ height: '40px' }}
+                      >
+                        <source src={result.audioURL} type="audio/webm" />
+                        <source src={result.audioURL} type="audio/mp4" />
+                        브라우저가 오디오 재생을 지원하지 않습니다.
+                      </audio>
+                    </div>
+                  )}
+
+                  {/* 내용 평가 - 조건부 렌더링 */}
+                  <div className="border-t pt-3 mb-4 bg-blue-50 -mx-6 px-6 pb-3 rounded-b-xl">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-semibold text-gray-700">📝 내용 피드백</span>
+                      {!isFeedbackPending && result.contentScore && (
+                        <span className="text-lg font-bold text-primary-600">
+                          {result.contentScore}/10점
+                        </span>
+                      )}
+                    </div>
+                    
+                    {/* 피드백 진행중 UI */}
+                    {isFeedbackPending ? (
+                      <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4 text-center">
+                        <div className="flex items-center justify-center mb-2">
+                          <div className="animate-spin w-5 h-5 border-3 border-primary-600 border-t-transparent rounded-full mr-3"></div>
+                          <span className="text-yellow-800 font-semibold">피드백 진행 중...</span>
+                        </div>
+                        <p className="text-yellow-700 text-sm">
+                          AI가 답변을 분석하고 있습니다. 잠시만 기다려주세요!
+                        </p>
+                      </div>
+                    ) : (
+                      /* 피드백 완료 UI */
+                      <p className="text-gray-700 text-sm bg-white p-3 rounded-lg">
+                        {result.contentAdvice || result.feedback || '평가 없음'}
+                      </p>
                     )}
                   </div>
-                  <p className="text-gray-700 text-sm bg-white p-3 rounded-lg">
-                    {result.contentAdvice || result.feedback || '평가 없음'}
-                  </p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

@@ -159,3 +159,4 @@ LLM_API_URL=https://api.openai.com/v1
 **버전:** 2.0 (음성 전용 확정)
 
 
+
