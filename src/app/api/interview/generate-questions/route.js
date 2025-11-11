@@ -125,8 +125,11 @@ Provide ONLY the JSON object, no additional text. Questions should be in Korean.
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 45000); // 45초 타임아웃
         
+        // [스코프 수정] llmResponse를 try 블록 밖에서 선언
+        let llmResponse;
+        
         try {
-          const llmResponse = await fetch(llmApiUrl, {
+          llmResponse = await fetch(llmApiUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
