@@ -354,7 +354,7 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
       const analysisResult = await response.json();
       console.log('[백그라운드] 답변 평가 완료:', analysisResult);
 
-      // Firestore에 저장
+      // ===== [진단 4] Firestore 저장 try-catch =====
       if (db) {
         const answerData = {
           userId: userId,
@@ -370,11 +370,33 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
           createdAt: new Date().toISOString()
         };
         
-        const docRef = await addDoc(collection(db, 'interview_answers'), answerData);
-        console.log('[백그라운드] Firestore 저장 완료. 문서 ID:', docRef.id);
+        console.log('[진단 4] Firestore 저장 시작');
+        console.log('[진단 4] - 컬렉션:', 'interview_answers');
+        console.log('[진단 4] - userId:', userId);
+        console.log('[진단 4] - interviewId:', interviewId);
+        console.log('[진단 4] - 저장할 데이터 크기:', JSON.stringify(answerData).length, 'bytes');
+        
+        try {
+          const docRef = await addDoc(collection(db, 'interview_answers'), answerData);
+          console.log('[진단 4] ✅ Firestore 저장 성공!');
+          console.log('[진단 4] - 저장된 문서 ID:', docRef.id);
+          console.log('[진단 4] - 저장 경로:', 'interview_answers/' + docRef.id);
+        } catch (firestoreError) {
+          console.error('[진단 4] ❌ Firestore 저장 실패!');
+          console.error('[진단 4] - 에러 코드:', firestoreError.code);
+          console.error('[진단 4] - 에러 메시지:', firestoreError.message);
+          console.error('[진단 4] - 전체 에러:', firestoreError);
+          console.error('[진단 4] 💡 Firestore Rules에서 allow create/write 권한을 확인하세요!');
+          console.error('[진단 4] 💡 Firestore가 활성화되어 있는지 확인하세요!');
+          throw firestoreError; // 에러를 다시 던져서 백그라운드 catch에서 처리
+        }
+      } else {
+        console.error('[진단 4] ❌ Firestore DB가 초기화되지 않았습니다!');
+        console.error('[진단 4] 💡 firebase/config.js에서 Firestore 초기화를 확인하세요!');
       }
     } catch (error) {
       console.error('[백그라운드] 평가 및 저장 오류:', error);
+      console.error('[백그라운드] 전체 스택:', error.stack);
       throw error;
     }
   };
@@ -394,38 +416,75 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
       console.log('답변 길이:', finalAnswer.length, '자');
       console.log('녹음 시간:', actualDurationInSeconds, '초');
 
+      // ===== [진단 1] Blob 유효성 검사 =====
+      console.log('[진단 1] audioBlob 유효성 검사:');
+      console.log('[진단 1] - size:', audioBlob.size, 'bytes');
+      console.log('[진단 1] - type:', audioBlob.type);
+      
+      if (audioBlob.size === 0) {
+        console.error('[진단 1] ❌ 치명적 오류: audioBlob의 size가 0입니다. 녹음이 실패했거나 마이크 권한이 없습니다!');
+        alert('녹음에 실패했습니다. 마이크 권한을 확인해주세요.');
+        return;
+      } else if (audioBlob.size < 1000) {
+        console.warn('[진단 1] ⚠️ 경고: audioBlob의 size가 매우 작습니다 (', audioBlob.size, 'bytes). 녹음이 제대로 되지 않았을 수 있습니다.');
+      } else {
+        console.log('[진단 1] ✅ audioBlob 유효성 검사 통과');
+      }
+
       // ===== Firebase Storage 업로드 시작 =====
       console.log('=== Firebase Storage 업로드 시작 ===');
       
       let audioURL = null;
       
       if (storage) {
+        const questionId = `q${questionCount + 1}`;
+        const fileName = `${questionId}_${Date.now()}.webm`;
+        const storagePath = `recordings/${userId}/${interviewId}/${fileName}`;
+        const storageReference = ref(storage, storagePath);
+        
+        console.log('[진단 2] Storage 업로드 시작');
+        console.log('[진단 2] - 업로드 경로:', storagePath);
+        console.log('[진단 2] - 파일 이름:', fileName);
+        console.log('[진단 2] - 파일 크기:', audioBlob.size, 'bytes');
+        console.log('[진단 2] - Content-Type:', 'audio/webm');
+        
+        // ===== [진단 2] Storage 업로드 try-catch =====
         try {
-          // 1단계: Firebase Storage에 오디오 파일 업로드
-          const questionId = `q${questionCount + 1}`;
-          const fileName = `${questionId}_${Date.now()}.webm`;
-          const storagePath = `recordings/${userId}/${interviewId}/${fileName}`;
-          const storageReference = ref(storage, storagePath);
-          
-          console.log('[Firebase] 업로드 경로:', storagePath);
-          console.log('[Firebase] 파일 크기:', audioBlob.size, 'bytes');
-          
           const uploadResult = await uploadBytes(storageReference, audioBlob, {
             contentType: 'audio/webm'
           });
           
-          console.log('[Firebase] 업로드 완료:', uploadResult.metadata.fullPath);
+          console.log('[진단 2] ✅ Storage 업로드 성공!');
+          console.log('[진단 2] - 업로드된 경로:', uploadResult.metadata.fullPath);
+          console.log('[진단 2] - 파일 크기:', uploadResult.metadata.size, 'bytes');
+          console.log('[진단 2] - Content-Type:', uploadResult.metadata.contentType);
           
-          // 2단계: 다운로드 URL 가져오기
-          audioURL = await getDownloadURL(storageReference);
-          console.log('[Firebase] 다운로드 URL 획득:', audioURL.substring(0, 50) + '...');
+          // ===== [진단 3] Download URL 가져오기 try-catch =====
+          console.log('[진단 3] Download URL 가져오기 시작');
+          try {
+            audioURL = await getDownloadURL(storageReference);
+            console.log('[진단 3] ✅ Download URL 확보 성공!');
+            console.log('[진단 3] - URL:', audioURL.substring(0, 80) + '...');
+          } catch (urlError) {
+            console.error('[진단 3] ❌ Download URL 가져오기 실패!');
+            console.error('[진단 3] - 에러 코드:', urlError.code);
+            console.error('[진단 3] - 에러 메시지:', urlError.message);
+            console.error('[진단 3] - 전체 에러:', urlError);
+            console.error('[진단 3] 💡 Firebase Storage Rules에서 allow read 권한을 확인하세요!');
+          }
           
-        } catch (storageError) {
-          console.error('[Firebase] Storage 업로드 실패:', storageError);
+        } catch (uploadError) {
+          console.error('[진단 2] ❌ Storage 업로드 실패!');
+          console.error('[진단 2] - 에러 코드:', uploadError.code);
+          console.error('[진단 2] - 에러 메시지:', uploadError.message);
+          console.error('[진단 2] - 전체 에러:', uploadError);
+          console.error('[진단 2] 💡 Firebase Storage Rules에서 allow write 권한을 확인하세요!');
+          console.error('[진단 2] 💡 Firebase Storage가 활성화되어 있는지 확인하세요!');
           // Storage 실패해도 계속 진행 (URL은 null)
         }
       } else {
-        console.warn('[Firebase] Storage가 초기화되지 않았습니다. 오디오 파일이 저장되지 않습니다.');
+        console.error('[Firebase] ❌ Storage가 초기화되지 않았습니다!');
+        console.error('[Firebase] 💡 firebase/config.js에서 Storage 초기화를 확인하세요!');
       }
 
       // ===== [최적화] 답변 평가를 백그라운드로 처리 (fire-and-forget) =====
