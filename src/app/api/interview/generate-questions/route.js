@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
-    const { jobKeywords, resumeText, previousAnswer, previousQuestion, questionCount = 0 } = await request.json();
+    const { jobKeywords, resumeText, previousAnswer, previousQuestion, questionCount = 0, streaming = false } = await request.json();
 
     if (!jobKeywords || !resumeText) {
       return NextResponse.json(
@@ -84,46 +84,140 @@ Provide ONLY the JSON object, no additional text. Questions should be in Korean.
         };
       }
     } else {
-      const llmResponse = await fetch(llmApiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${llmApiKey}`
-        },
-         body: JSON.stringify({
-           model: 'gpt-4o',
-           messages: [
-            {
-              role: 'system',
-              content: 'You are a professional interviewer. Always respond with valid JSON only.'
-            },
-            {
-              role: 'user',
-              content: prompt
+      // 스트리밍 모드
+      if (streaming) {
+        const llmResponse = await fetch(llmApiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${llmApiKey}`
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a professional interviewer. Always respond with valid JSON only.'
+              },
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            temperature: 0.8,
+            max_tokens: 500,
+            stream: true // 스트리밍 활성화
+          })
+        });
+
+        if (!llmResponse.ok) {
+          throw new Error('LLM API 호출 실패');
+        }
+
+        // SSE (Server-Sent Events) 형식으로 스트리밍
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          async start(controller) {
+            try {
+              const reader = llmResponse.body.getReader();
+              const decoder = new TextDecoder();
+              let buffer = '';
+
+              while (true) {
+                const { done, value } = await reader.read();
+                
+                if (done) {
+                  controller.close();
+                  break;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    const data = line.slice(6);
+                    
+                    if (data === '[DONE]') {
+                      continue;
+                    }
+
+                    try {
+                      const parsed = JSON.parse(data);
+                      const content = parsed.choices[0]?.delta?.content;
+                      
+                      if (content) {
+                        // SSE 형식으로 전송
+                        controller.enqueue(
+                          encoder.encode(`data: ${JSON.stringify({ content })}\n\n`)
+                        );
+                      }
+                    } catch (e) {
+                      console.error('Stream parsing error:', e);
+                    }
+                  }
+                }
+              }
+            } catch (error) {
+              console.error('Streaming error:', error);
+              controller.error(error);
             }
-          ],
-          temperature: 0.8,
-          max_tokens: 500
-        })
-      });
+          }
+        });
 
-      if (!llmResponse.ok) {
-        throw new Error('LLM API 호출 실패');
-      }
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          },
+        });
+      } else {
+        // 기존 비스트리밍 모드 (폴백)
+        const llmResponse = await fetch(llmApiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${llmApiKey}`
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a professional interviewer. Always respond with valid JSON only.'
+              },
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            temperature: 0.8,
+            max_tokens: 500
+          })
+        });
 
-      const llmData = await llmResponse.json();
-      const content = llmData.choices[0].message.content;
-      
-      // JSON 객체 파싱 (배열이 아닌 단일 객체)
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('Invalid JSON response from LLM');
+        if (!llmResponse.ok) {
+          throw new Error('LLM API 호출 실패');
+        }
+
+        const llmData = await llmResponse.json();
+        const content = llmData.choices[0].message.content;
+        
+        // JSON 객체 파싱 (배열이 아닌 단일 객체)
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new Error('Invalid JSON response from LLM');
+        }
+        
+        question = JSON.parse(jsonMatch[0]);
       }
-      
-      question = JSON.parse(jsonMatch[0]);
     }
 
-    return NextResponse.json({ question });
+    if (!streaming) {
+      return NextResponse.json({ question });
+    }
 
   } catch (error) {
     console.error('Question generation error:', error);

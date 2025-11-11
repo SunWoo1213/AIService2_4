@@ -17,6 +17,8 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
   const [browserSupported, setBrowserSupported] = useState(true);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [interviewId] = useState(() => `interview_${Date.now()}`); // 면접 세션 고유 ID
+  const [streamingQuestion, setStreamingQuestion] = useState(''); // 스트리밍 중인 질문
+  const [isStreaming, setIsStreaming] = useState(false); // 스트리밍 상태
   const MAX_QUESTIONS = 5; // 최대 질문 수
 
   const recognitionRef = useRef(null);
@@ -320,6 +322,63 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
     setIsProcessing(true);
   };
 
+  // ===== 백그라운드에서 답변 평가 및 저장 (fire-and-forget) =====
+  const evaluateAnswerInBackground = async (
+    audioBlob,
+    transcript,
+    question,
+    audioURL,
+    duration
+  ) => {
+    try {
+      console.log('[백그라운드] 답변 평가 시작');
+      
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'interview_answer.webm');
+      formData.append('question', question);
+      formData.append('transcript', transcript);
+      
+      if (duration) {
+        formData.append('actualDuration', duration.toString());
+      }
+
+      const response = await fetch('/api/interview/evaluate-delivery', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('답변 평가 실패');
+      }
+
+      const analysisResult = await response.json();
+      console.log('[백그라운드] 답변 평가 완료:', analysisResult);
+
+      // Firestore에 저장
+      if (db) {
+        const answerData = {
+          userId: userId,
+          interviewId: interviewId,
+          questionId: `q${questionCount + 1}`,
+          question: question,
+          transcript: transcript,
+          audioURL: audioURL,
+          feedback: analysisResult.contentFeedback?.advice || '',
+          score: analysisResult.contentFeedback?.score || null,
+          duration: duration,
+          timestamp: Timestamp.now(),
+          createdAt: new Date().toISOString()
+        };
+        
+        const docRef = await addDoc(collection(db, 'interview_answers'), answerData);
+        console.log('[백그라운드] Firestore 저장 완료. 문서 ID:', docRef.id);
+      }
+    } catch (error) {
+      console.error('[백그라운드] 평가 및 저장 오류:', error);
+      throw error;
+    }
+  };
+
   // 오디오 파일을 서버로 전송하여 분석 및 Firebase에 저장
   const sendAudioForAnalysis = async (audioBlob) => {
     try {
@@ -330,53 +389,10 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
         ? Math.round((recordingEndTime - recordingStartTimeRef.current) / 1000)
         : null;
       
-      console.log('=== 분석 전송 ===');
+      console.log('=== Firebase Storage 업로드 및 백그라운드 평가 시작 ===');
       console.log('질문:', currentQuestion.question);
       console.log('답변 길이:', finalAnswer.length, '자');
       console.log('녹음 시간:', actualDurationInSeconds, '초');
-      
-      const formData = new FormData();
-      formData.append('audio', audioBlob, 'interview_answer.webm');
-      formData.append('question', currentQuestion.question);
-      formData.append('transcript', finalAnswer);
-      
-      if (actualDurationInSeconds) {
-        formData.append('actualDuration', actualDurationInSeconds.toString());
-      }
-
-      // [진단 2단계] STT API 요청 확인
-      console.log('[진단 2단계] STT API 요청 헤더:', {
-        method: 'POST',
-        url: '/api/interview/evaluate-delivery',
-        contentType: '(multipart/form-data - FormData)'
-      });
-      console.log('[진단 2단계] STT API 요청 본문:', {
-        audioSize: audioBlob.size,
-        audioType: audioBlob.type,
-        question: currentQuestion.question,
-        transcriptLength: finalAnswer.length,
-        transcriptPreview: finalAnswer.substring(0, 100),
-        actualDuration: actualDurationInSeconds
-      });
-
-      const response = await fetch('/api/interview/evaluate-delivery', {
-        method: 'POST',
-        body: formData,
-      });
-
-      // [진단 3단계] STT API 응답 상태 확인
-      console.log('[진단 3단계] STT API 응답 상태:', response.status, response.statusText);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[진단 3단계] STT API 에러 응답:', errorText);
-        throw new Error('오디오 분석 실패');
-      }
-
-      const analysisResult = await response.json();
-      
-      // [진단 3단계] STT API 응답 전체 데이터
-      console.log('[진단 3단계] STT API 응답 전체:', analysisResult);
 
       // ===== Firebase Storage 업로드 시작 =====
       console.log('=== Firebase Storage 업로드 시작 ===');
@@ -412,42 +428,26 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
         console.warn('[Firebase] Storage가 초기화되지 않았습니다. 오디오 파일이 저장되지 않습니다.');
       }
 
-      // 3단계: Firestore에 답변 데이터 저장
-      if (db) {
-        try {
-          const answerData = {
-            userId: userId,
-            interviewId: interviewId,
-            questionId: `q${questionCount + 1}`,
-            question: currentQuestion.question,
-            transcript: finalAnswer,
-            audioURL: audioURL, // Storage URL (실패 시 null)
-            feedback: analysisResult.contentFeedback?.advice || '',
-            score: analysisResult.contentFeedback?.score || null,
-            duration: actualDurationInSeconds,
-            timestamp: Timestamp.now(),
-            createdAt: new Date().toISOString()
-          };
-          
-          console.log('[Firebase] Firestore 저장 시작');
-          const docRef = await addDoc(collection(db, 'interview_answers'), answerData);
-          console.log('[Firebase] Firestore 저장 완료. 문서 ID:', docRef.id);
-          
-        } catch (firestoreError) {
-          console.error('[Firebase] Firestore 저장 실패:', firestoreError);
-          // Firestore 실패해도 계속 진행
-        }
-      } else {
-        console.warn('[Firebase] Firestore가 초기화되지 않았습니다. 답변 데이터가 저장되지 않습니다.');
-      }
+      // ===== [최적화] 답변 평가를 백그라운드로 처리 (fire-and-forget) =====
+      // 백그라운드에서 답변 평가 및 Firestore 저장 (await 없이)
+      evaluateAnswerInBackground(
+        audioBlob,
+        finalAnswer,
+        currentQuestion.question,
+        audioURL,
+        actualDurationInSeconds
+      ).catch(error => {
+        console.error('[백그라운드] 답변 평가 실패:', error);
+        // 에러가 발생해도 사용자 플로우에는 영향 없음
+      });
 
-      // 결과 저장 (로컬 상태 - UI 표시용)
+      // 로컬 상태에는 임시로 저장 (피드백은 나중에 업데이트될 수 있음)
       const newResult = {
         question: currentQuestion.question,
         userAnswer: finalAnswer,
-        audioURL: audioURL, // Firebase Storage URL
-        contentAdvice: analysisResult.contentFeedback?.advice || '',
-        contentScore: analysisResult.contentFeedback?.score || null,
+        audioURL: audioURL,
+        contentAdvice: '평가 중...', // 백그라운드에서 평가 중
+        contentScore: null,
       };
 
       const updatedResults = [...results, newResult];
@@ -457,35 +457,118 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
       const nextQuestionCount = questionCount + 1;
       
       if (nextQuestionCount < MAX_QUESTIONS) {
-        // 다음 질문 요청 (꼬리 질문)
-        console.log('=== 다음 질문 요청 ===');
+        // ===== [최적화] 다음 질문을 스트리밍으로 요청 =====
+        console.log('=== 다음 질문 스트리밍 요청 ===');
         console.log('이전 질문:', currentQuestion.question);
         console.log('이전 답변:', finalAnswer.substring(0, 100));
         
-        const nextQuestionResponse = await fetch('/api/interview/generate-questions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            jobKeywords: jobKeywords,
-            resumeText: resumeText,
-            previousAnswer: finalAnswer,
-            previousQuestion: currentQuestion.question,
-            questionCount: nextQuestionCount
-          }),
-        });
-
-        if (!nextQuestionResponse.ok) {
-          throw new Error('다음 질문 생성 실패');
-        }
-
-        const nextQuestionData = await nextQuestionResponse.json();
-        console.log('다음 질문 받음:', nextQuestionData.question);
+        setIsStreaming(true);
+        setStreamingQuestion('');
         
-        // 다음 질문으로 이동
-        setCurrentQuestion(nextQuestionData.question);
-        setQuestionCount(nextQuestionCount);
+        try {
+          const response = await fetch('/api/interview/generate-questions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              jobKeywords: jobKeywords,
+              resumeText: resumeText,
+              previousAnswer: finalAnswer,
+              previousQuestion: currentQuestion.question,
+              questionCount: nextQuestionCount,
+              streaming: true // 스트리밍 활성화
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error('다음 질문 생성 실패');
+          }
+
+          // SSE 스트림 읽기
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let fullQuestion = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6);
+                
+                try {
+                  const parsed = JSON.parse(data);
+                  if (parsed.content) {
+                    fullQuestion += parsed.content;
+                    setStreamingQuestion(fullQuestion);
+                  }
+                } catch (e) {
+                  console.error('스트림 파싱 오류:', e);
+                }
+              }
+            }
+          }
+
+          setIsStreaming(false);
+          console.log('스트리밍 완료:', fullQuestion);
+
+          // JSON 파싱하여 질문 추출
+          const jsonMatch = fullQuestion.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const questionData = JSON.parse(jsonMatch[0]);
+            setCurrentQuestion(questionData);
+            setQuestionCount(nextQuestionCount);
+            setStreamingQuestion('');
+            
+            // 스트리밍 완료 후 TTS로 질문 읽어주기
+            setTimeout(() => {
+              speakQuestion(questionData);
+            }, 500); // 0.5초 딜레이 후 TTS 시작
+          } else {
+            throw new Error('질문 파싱 실패');
+          }
+        } catch (streamError) {
+          console.error('스트리밍 오류:', streamError);
+          setIsStreaming(false);
+          
+          // 폴백: 비스트리밍 방식으로 재시도
+          console.log('폴백: 비스트리밍 방식으로 재시도');
+          const fallbackResponse = await fetch('/api/interview/generate-questions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              jobKeywords: jobKeywords,
+              resumeText: resumeText,
+              previousAnswer: finalAnswer,
+              previousQuestion: currentQuestion.question,
+              questionCount: nextQuestionCount,
+              streaming: false
+            }),
+          });
+
+          if (!fallbackResponse.ok) {
+            throw new Error('다음 질문 생성 실패');
+          }
+
+          const fallbackData = await fallbackResponse.json();
+          setCurrentQuestion(fallbackData.question);
+          setQuestionCount(nextQuestionCount);
+          
+          // 폴백 완료 후 TTS로 질문 읽어주기
+          setTimeout(() => {
+            speakQuestion(fallbackData.question);
+          }, 500);
+        }
       } else {
         // 면접 완료
         console.log('=== 면접 완료 ===');
@@ -513,14 +596,33 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
   }
 
   if (isProcessing) {
-    return (
-      <Card className="text-center py-12">
-        <div className="text-4xl mb-4">🤔</div>
-        <h3 className="text-xl font-bold text-gray-800 mb-2">답변을 분석하고 다음 질문을 생성하는 중...</h3>
-        <p className="text-gray-600 mb-4">잠시만 기다려주세요</p>
-        <div className="animate-spin mx-auto w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full"></div>
-      </Card>
-    );
+    if (isStreaming && streamingQuestion) {
+      // 스트리밍 중: 질문이 타이핑되듯이 표시
+      return (
+        <Card className="text-center py-12">
+          <div className="text-4xl mb-4">✨</div>
+          <h3 className="text-xl font-bold text-gray-800 mb-4">다음 질문이 생성되고 있습니다...</h3>
+          <div className="text-left max-w-2xl mx-auto bg-blue-50 border-2 border-blue-200 rounded-lg p-6">
+            <p className="text-lg text-gray-800 whitespace-pre-wrap">
+              {streamingQuestion}
+              <span className="inline-block w-2 h-5 bg-primary-600 ml-1 animate-pulse"></span>
+            </p>
+          </div>
+          <p className="text-gray-500 text-sm mt-4">답변 평가는 백그라운드에서 진행됩니다</p>
+        </Card>
+      );
+    } else {
+      // 스트리밍 전: 로딩
+      return (
+        <Card className="text-center py-12">
+          <div className="text-4xl mb-4">🤔</div>
+          <h3 className="text-xl font-bold text-gray-800 mb-2">다음 질문을 준비하는 중...</h3>
+          <p className="text-gray-600 mb-4">곧 질문이 표시됩니다</p>
+          <div className="animate-spin mx-auto w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full"></div>
+          <p className="text-gray-500 text-sm mt-4">답변 평가는 백그라운드에서 진행됩니다</p>
+        </Card>
+      );
+    }
   }
 
   const progress = ((questionCount + 1) / MAX_QUESTIONS) * 100;
