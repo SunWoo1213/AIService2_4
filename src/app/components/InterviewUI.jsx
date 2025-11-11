@@ -806,6 +806,30 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
                   <p className="text-sm text-gray-700 bg-white p-2 rounded">{result.question}</p>
                 </div>
 
+                {/* 답변 텍스트 */}
+                {result.userAnswer && (
+                  <div className="mb-3">
+                    <p className="text-xs font-semibold text-gray-500 mb-1">내 답변</p>
+                    <p className="text-sm text-gray-700 bg-gray-100 p-2 rounded">{result.userAnswer}</p>
+                  </div>
+                )}
+
+                {/* 오디오 플레이어 */}
+                {result.audioURL && (
+                  <div className="mb-3">
+                    <p className="text-xs font-semibold text-gray-500 mb-2">🎧 녹음 듣기</p>
+                    <audio 
+                      controls 
+                      className="w-full"
+                      style={{ height: '40px' }}
+                    >
+                      <source src={result.audioURL} type="audio/webm" />
+                      <source src={result.audioURL} type="audio/mp4" />
+                      브라우저가 오디오 재생을 지원하지 않습니다.
+                    </audio>
+                  </div>
+                )}
+
                 {/* 내용 피드백만 표시 */}
                 {result.contentAdvice && (
                   <div className="mb-3">

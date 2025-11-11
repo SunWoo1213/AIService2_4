@@ -123,6 +123,22 @@ export default function FeedbackDetailPage({ params }) {
                   <p className="text-gray-700 mt-1 whitespace-pre-wrap">{result.userAnswer}</p>
                 </div>
 
+                {/* 오디오 플레이어 */}
+                {result.audioURL && (
+                  <div className="mb-4">
+                    <span className="text-sm font-medium text-gray-600 mb-2 block">🎧 녹음 듣기</span>
+                    <audio 
+                      controls 
+                      className="w-full"
+                      style={{ height: '40px' }}
+                    >
+                      <source src={result.audioURL} type="audio/webm" />
+                      <source src={result.audioURL} type="audio/mp4" />
+                      브라우저가 오디오 재생을 지원하지 않습니다.
+                    </audio>
+                  </div>
+                )}
+
                 {/* 내용 평가 */}
                 <div className="border-t pt-3 mb-4 bg-blue-50 -mx-6 px-6 pb-3 rounded-b-xl">
                   <div className="flex items-center justify-between mb-3">
