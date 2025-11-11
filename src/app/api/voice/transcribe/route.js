@@ -32,6 +32,17 @@ export async function POST(request) {
     // 클라이언트가 STT 결과를 함께 전송하는 경우
     const browserSTT = formData.get('transcript');
     
+    // [진단 2단계] 받은 데이터 확인
+    console.log('[진단 2단계 - 서버] 받은 오디오 파일:', {
+      name: audioFile.name,
+      type: audioFile.type,
+      size: audioFile.size
+    });
+    console.log('[진단 2단계 - 서버] 받은 transcript:', {
+      length: browserSTT ? browserSTT.length : 0,
+      preview: browserSTT ? browserSTT.substring(0, 100) : '(없음)'
+    });
+    
     let sttResult = '';
     
     if (browserSTT && browserSTT.trim().length > 0) {
@@ -53,6 +64,14 @@ export async function POST(request) {
 
     // STT 결과가 너무 짧으면 불확실 처리
     if (sttResult.length < 5) {
+      // [진단 4단계] "답변 없음" 처리됨
+      console.log('[진단 4단계] "답변 없음" 처리됨 (STT 결과가 너무 짧음)');
+      console.log('[진단 4단계] 원본 transcript 값:', {
+        sttResult: sttResult,
+        length: sttResult.length,
+        isEmptyOrNull: !sttResult || sttResult.length === 0
+      });
+      
       return NextResponse.json({
         status: 'UNCERTAIN',
         summary: '말씀하신 내용이 명확하게 들리지 않았어요.',
@@ -105,6 +124,8 @@ If text is too short or unclear:
       }
     } else {
       // LLM API 호출
+      console.log('[진단 3단계 - LLM] LLM API 요청 시작');
+      
       const llmResponse = await fetch(llmApiUrl, {
         method: 'POST',
         headers: {
@@ -128,11 +149,17 @@ If text is too short or unclear:
         })
       });
 
+      console.log('[진단 3단계 - LLM] LLM API 응답 상태:', llmResponse.status);
+
       if (!llmResponse.ok) {
+        const errorText = await llmResponse.text();
+        console.error('[진단 3단계 - LLM] LLM API 에러:', errorText);
         throw new Error(`LLM API 호출 실패: ${llmResponse.status}`);
       }
 
       const llmData = await llmResponse.json();
+      console.log('[진단 3단계 - LLM] LLM API 응답 전체:', llmData);
+      
       const content = llmData.choices[0].message.content;
       
       // JSON 파싱
@@ -185,5 +212,6 @@ If text is too short or unclear:
     );
   }
 }
+
 
 

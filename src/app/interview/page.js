@@ -81,6 +81,7 @@ export default function InterviewPage() {
     setGenerating(true);
 
     try {
+      // 첫 질문 하나만 받아오기
       const response = await fetch('/api/interview/generate-questions', {
         method: 'POST',
         headers: {
@@ -89,7 +90,8 @@ export default function InterviewPage() {
         body: JSON.stringify({
           jobKeywords: selectedFeedback.jobKeywords,
           resumeText: selectedFeedback.resumeText,
-          tonePreference: selectedTone // 선택한 말투 전달
+          tonePreference: selectedTone, // 선택한 말투 전달
+          questionCount: 0 // 첫 질문
         }),
       });
 
@@ -98,7 +100,8 @@ export default function InterviewPage() {
       }
 
       const data = await response.json();
-      setQuestions(data.questions);
+      // 단일 질문을 배열로 감싸서 전달 (기존 InterviewUI 인터페이스 유지)
+      setQuestions([data.question]);
       setStep('interview');
     } catch (error) {
       console.error('Question generation error:', error);
@@ -306,9 +309,12 @@ export default function InterviewPage() {
           </Card>
         )}
 
-        {step === 'interview' && questions && (
+        {step === 'interview' && questions && selectedFeedback && user && (
           <InterviewUI 
-            questions={questions} 
+            userId={user.uid}
+            initialQuestion={questions[0]}
+            jobKeywords={selectedFeedback.jobKeywords}
+            resumeText={selectedFeedback.resumeText}
             onComplete={handleInterviewComplete}
             tonePreference={selectedTone || defaultTone}
           />

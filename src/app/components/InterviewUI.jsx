@@ -3,15 +3,21 @@
 import { useState, useEffect, useRef } from 'react';
 import Button from './ui/Button';
 import Card from './ui/Card';
+import { storage, db } from '@/firebase/config';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { collection, addDoc, Timestamp } from 'firebase/firestore';
 
-export default function InterviewUI({ questions, onComplete, tonePreference = 'friendly' }) {
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(0);
+export default function InterviewUI({ userId, initialQuestion, jobKeywords, resumeText, onComplete, tonePreference = 'friendly' }) {
+  const [currentQuestion, setCurrentQuestion] = useState(initialQuestion);
+  const [questionCount, setQuestionCount] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(initialQuestion?.time_limit || 60);
   const [isRecording, setIsRecording] = useState(false);
   const [results, setResults] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [browserSupported, setBrowserSupported] = useState(true);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [interviewId] = useState(() => `interview_${Date.now()}`); // 면접 세션 고유 ID
+  const MAX_QUESTIONS = 5; // 최대 질문 수
 
   const recognitionRef = useRef(null);
   const timerRef = useRef(null);
@@ -22,8 +28,8 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
   const isRecordingRef = useRef(false);
   const recordingStartTimeRef = useRef(null);
 
-  // TTS 기능: 질문을 음성으로 읽어주는 함수
-  const speakQuestion = (text, autoStartRecording = false) => {
+  // TTS 기능: 질문을 음성으로 읽어주는 함수 (자동 녹음 제거)
+  const speakQuestion = (text) => {
     if (window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
     }
@@ -82,14 +88,6 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
       utterance.voice = selectedVoice;
     }
 
-    // TTS가 끝나면 자동으로 녹음 시작
-    if (autoStartRecording) {
-      utterance.onend = () => {
-        console.log('TTS 완료, 녹음 자동 시작...');
-        startRecording();
-      };
-    }
-
     utterance.onerror = (event) => {
       console.error('TTS 오류:', event.error);
     };
@@ -119,30 +117,27 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
     }
   }, []);
 
-  // 질문 변경 시: 타이머 리셋 및 TTS 시작 → 자동 녹음
+  // 질문 변경 시: 타이머 리셋 및 TTS 시작 (자동 녹음 제거)
   useEffect(() => {
-    if (questions && questions.length > 0 && typeof window !== 'undefined' && window.speechSynthesis) {
-      const currentQuestion = questions[currentQuestionIndex];
-      if (currentQuestion && currentQuestion.question) {
-        setIsTimerRunning(false);
-        setTimeLeft(currentQuestion.time_limit);
-        finalTranscriptRef.current = '';
-        isRecordingRef.current = false;
-        recordingStartTimeRef.current = null;
-        
-        const timer = setTimeout(() => {
-          speakQuestion(currentQuestion.question, true); // 자동 녹음 시작
-        }, 500);
+    if (currentQuestion && typeof window !== 'undefined' && window.speechSynthesis) {
+      setIsTimerRunning(false);
+      setTimeLeft(currentQuestion.time_limit);
+      finalTranscriptRef.current = '';
+      isRecordingRef.current = false;
+      recordingStartTimeRef.current = null;
+      
+      const timer = setTimeout(() => {
+        speakQuestion(currentQuestion.question); // 자동 녹음 제거
+      }, 500);
 
-        return () => {
-          clearTimeout(timer);
-          if (window.speechSynthesis.speaking) {
-            window.speechSynthesis.cancel();
-          }
-        };
-      }
+      return () => {
+        clearTimeout(timer);
+        if (window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+        }
+      };
     }
-  }, [currentQuestionIndex, questions]);
+  }, [currentQuestion]);
 
   // 타이머 카운트다운 로직
   useEffect(() => {
@@ -198,6 +193,10 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
       // 녹음 중지 시 즉시 API로 전송
       mediaRecorderRef.current.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        
+        // [진단 1단계] 오디오 데이터 생성 확인
+        console.log('[진단 1단계] 오디오 데이터:', audioBlob.size, 'bytes', '타입:', audioBlob.type);
+        
         sendAudioForAnalysis(audioBlob);
       };
 
@@ -311,14 +310,17 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
       audioStreamRef.current = null;
     }
 
+    // [중요] 타이머 완전히 해제
     if (timerRef.current) {
       clearInterval(timerRef.current);
+      timerRef.current = null;
     }
+    setIsTimerRunning(false);
 
     setIsProcessing(true);
   };
 
-  // 오디오 파일을 서버로 전송하여 분석
+  // 오디오 파일을 서버로 전송하여 분석 및 Firebase에 저장
   const sendAudioForAnalysis = async (audioBlob) => {
     try {
       const finalAnswer = finalTranscriptRef.current.trim() || '답변 없음';
@@ -329,34 +331,121 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
         : null;
       
       console.log('=== 분석 전송 ===');
-      console.log('질문:', questions[currentQuestionIndex].question);
+      console.log('질문:', currentQuestion.question);
       console.log('답변 길이:', finalAnswer.length, '자');
       console.log('녹음 시간:', actualDurationInSeconds, '초');
       
       const formData = new FormData();
       formData.append('audio', audioBlob, 'interview_answer.webm');
-      formData.append('question', questions[currentQuestionIndex].question);
+      formData.append('question', currentQuestion.question);
       formData.append('transcript', finalAnswer);
       
       if (actualDurationInSeconds) {
         formData.append('actualDuration', actualDurationInSeconds.toString());
       }
 
+      // [진단 2단계] STT API 요청 확인
+      console.log('[진단 2단계] STT API 요청 헤더:', {
+        method: 'POST',
+        url: '/api/interview/evaluate-delivery',
+        contentType: '(multipart/form-data - FormData)'
+      });
+      console.log('[진단 2단계] STT API 요청 본문:', {
+        audioSize: audioBlob.size,
+        audioType: audioBlob.type,
+        question: currentQuestion.question,
+        transcriptLength: finalAnswer.length,
+        transcriptPreview: finalAnswer.substring(0, 100),
+        actualDuration: actualDurationInSeconds
+      });
+
       const response = await fetch('/api/interview/evaluate-delivery', {
         method: 'POST',
         body: formData,
       });
 
+      // [진단 3단계] STT API 응답 상태 확인
+      console.log('[진단 3단계] STT API 응답 상태:', response.status, response.statusText);
+      
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[진단 3단계] STT API 에러 응답:', errorText);
         throw new Error('오디오 분석 실패');
       }
 
       const analysisResult = await response.json();
+      
+      // [진단 3단계] STT API 응답 전체 데이터
+      console.log('[진단 3단계] STT API 응답 전체:', analysisResult);
 
-      // 결과 저장 (STT 텍스트는 화면에 표시하지 않음)
+      // ===== Firebase Storage 업로드 시작 =====
+      console.log('=== Firebase Storage 업로드 시작 ===');
+      
+      let audioURL = null;
+      
+      if (storage) {
+        try {
+          // 1단계: Firebase Storage에 오디오 파일 업로드
+          const questionId = `q${questionCount + 1}`;
+          const fileName = `${questionId}_${Date.now()}.webm`;
+          const storagePath = `recordings/${userId}/${interviewId}/${fileName}`;
+          const storageReference = ref(storage, storagePath);
+          
+          console.log('[Firebase] 업로드 경로:', storagePath);
+          console.log('[Firebase] 파일 크기:', audioBlob.size, 'bytes');
+          
+          const uploadResult = await uploadBytes(storageReference, audioBlob, {
+            contentType: 'audio/webm'
+          });
+          
+          console.log('[Firebase] 업로드 완료:', uploadResult.metadata.fullPath);
+          
+          // 2단계: 다운로드 URL 가져오기
+          audioURL = await getDownloadURL(storageReference);
+          console.log('[Firebase] 다운로드 URL 획득:', audioURL.substring(0, 50) + '...');
+          
+        } catch (storageError) {
+          console.error('[Firebase] Storage 업로드 실패:', storageError);
+          // Storage 실패해도 계속 진행 (URL은 null)
+        }
+      } else {
+        console.warn('[Firebase] Storage가 초기화되지 않았습니다. 오디오 파일이 저장되지 않습니다.');
+      }
+
+      // 3단계: Firestore에 답변 데이터 저장
+      if (db) {
+        try {
+          const answerData = {
+            userId: userId,
+            interviewId: interviewId,
+            questionId: `q${questionCount + 1}`,
+            question: currentQuestion.question,
+            transcript: finalAnswer,
+            audioURL: audioURL, // Storage URL (실패 시 null)
+            feedback: analysisResult.contentFeedback?.advice || '',
+            score: analysisResult.contentFeedback?.score || null,
+            duration: actualDurationInSeconds,
+            timestamp: Timestamp.now(),
+            createdAt: new Date().toISOString()
+          };
+          
+          console.log('[Firebase] Firestore 저장 시작');
+          const docRef = await addDoc(collection(db, 'interview_answers'), answerData);
+          console.log('[Firebase] Firestore 저장 완료. 문서 ID:', docRef.id);
+          
+        } catch (firestoreError) {
+          console.error('[Firebase] Firestore 저장 실패:', firestoreError);
+          // Firestore 실패해도 계속 진행
+        }
+      } else {
+        console.warn('[Firebase] Firestore가 초기화되지 않았습니다. 답변 데이터가 저장되지 않습니다.');
+      }
+
+      // 결과 저장 (로컬 상태 - UI 표시용)
       const newResult = {
-        question: questions[currentQuestionIndex].question,
-        userAnswer: finalAnswer, // 내부 저장용
+        question: currentQuestion.question,
+        userAnswer: finalAnswer,
+        audioURL: audioURL, // Firebase Storage URL
         contentAdvice: analysisResult.contentFeedback?.advice || '',
         contentScore: analysisResult.contentFeedback?.score || null,
       };
@@ -364,16 +453,54 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
       const updatedResults = [...results, newResult];
       setResults(updatedResults);
 
-      // 다음 질문으로 이동 또는 완료
-      if (currentQuestionIndex < questions.length - 1) {
-        setCurrentQuestionIndex(currentQuestionIndex + 1);
+      // 다음 질문 요청 또는 면접 완료
+      const nextQuestionCount = questionCount + 1;
+      
+      if (nextQuestionCount < MAX_QUESTIONS) {
+        // 다음 질문 요청 (꼬리 질문)
+        console.log('=== 다음 질문 요청 ===');
+        console.log('이전 질문:', currentQuestion.question);
+        console.log('이전 답변:', finalAnswer.substring(0, 100));
+        
+        const nextQuestionResponse = await fetch('/api/interview/generate-questions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            jobKeywords: jobKeywords,
+            resumeText: resumeText,
+            previousAnswer: finalAnswer,
+            previousQuestion: currentQuestion.question,
+            questionCount: nextQuestionCount
+          }),
+        });
+
+        if (!nextQuestionResponse.ok) {
+          throw new Error('다음 질문 생성 실패');
+        }
+
+        const nextQuestionData = await nextQuestionResponse.json();
+        console.log('다음 질문 받음:', nextQuestionData.question);
+        
+        // 다음 질문으로 이동
+        setCurrentQuestion(nextQuestionData.question);
+        setQuestionCount(nextQuestionCount);
       } else {
+        // 면접 완료
+        console.log('=== 면접 완료 ===');
         if (onComplete) {
           onComplete(updatedResults);
         }
       }
     } catch (error) {
-      console.error('오디오 분석 오류:', error);
+      // [진단 3단계] 에러 발생 시
+      console.error('[진단 3단계] STT API 에러:', error);
+      console.error('[진단 3단계] 에러 상세:', {
+        message: error.message,
+        stack: error.stack
+      });
+      
       alert('음성 분석 중 오류가 발생했습니다.');
     } finally {
       setIsProcessing(false);
@@ -381,7 +508,7 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
   };
 
 
-  if (!questions || questions.length === 0) {
+  if (!currentQuestion) {
     return <div>질문을 불러오는 중...</div>;
   }
 
@@ -389,15 +516,14 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
     return (
       <Card className="text-center py-12">
         <div className="text-4xl mb-4">🤔</div>
-        <h3 className="text-xl font-bold text-gray-800 mb-2">답변을 분석하는 중...</h3>
+        <h3 className="text-xl font-bold text-gray-800 mb-2">답변을 분석하고 다음 질문을 생성하는 중...</h3>
         <p className="text-gray-600 mb-4">잠시만 기다려주세요</p>
         <div className="animate-spin mx-auto w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full"></div>
       </Card>
     );
   }
 
-  const currentQuestion = questions[currentQuestionIndex];
-  const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+  const progress = ((questionCount + 1) / MAX_QUESTIONS) * 100;
 
   return (
     <div className="space-y-6">
@@ -405,7 +531,7 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
       <div>
         <div className="flex justify-between text-sm text-gray-600 mb-2">
           <span>진행률</span>
-          <span>{currentQuestionIndex + 1} / {questions.length}</span>
+          <span>{questionCount + 1} / {MAX_QUESTIONS}</span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-3">
           <div
@@ -418,7 +544,7 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
       <Card>
         <div className="mb-6">
           <span className="inline-block px-3 py-1 bg-primary-100 text-primary-800 rounded-full text-sm font-medium mb-4">
-            질문 {currentQuestionIndex + 1}
+            질문 {questionCount + 1}
           </span>
           <h2 className="text-2xl font-bold text-gray-800">
             {currentQuestion.question}
@@ -435,10 +561,14 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
               </div>
             </div>
           ) : null}
-          <div className={`text-6xl font-bold ${timeLeft <= 10 ? 'text-red-600' : 'text-primary-600'}`}>
-            {timeLeft}
-          </div>
-          <p className="text-gray-600 mt-2">초 남음</p>
+          {isTimerRunning && (
+            <>
+              <div className={`text-6xl font-bold ${timeLeft <= 10 ? 'text-red-600' : 'text-primary-600'}`}>
+                {timeLeft}
+              </div>
+              <p className="text-gray-600 mt-2">초 남음</p>
+            </>
+          )}
         </div>
 
         {/* Recording status */}
@@ -468,6 +598,21 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
         )}
 
         {/* Controls */}
+        {!isRecording && !isTimerRunning && (
+          <div className="space-y-3">
+            <Button
+              onClick={startRecording}
+              fullWidth
+              className="bg-primary-600 hover:bg-primary-700 text-lg py-4 font-bold shadow-lg"
+            >
+              🎤 녹음 시작
+            </Button>
+            <p className="text-xs text-center text-gray-500">
+              준비가 되면 위 버튼을 눌러 답변을 시작하세요
+            </p>
+          </div>
+        )}
+        
         {isRecording && (
           <div className="space-y-3">
             <Button
@@ -481,12 +626,6 @@ export default function InterviewUI({ questions, onComplete, tonePreference = 'f
               답변이 모두 끝났다면 위 버튼을 눌러주세요
             </p>
           </div>
-        )}
-        
-        {!isRecording && timeLeft > 0 && (
-          <p className="text-sm text-gray-500 text-center mt-3">
-            💡 질문이 끝나면 자동으로 녹음이 시작됩니다
-          </p>
         )}
       </Card>
 

@@ -87,6 +87,10 @@ export default function AudioRecorder({ userId, onComplete, onRetry }) {
 
       mediaRecorderRef.current.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        
+        // [진단 1단계] 오디오 데이터 생성 확인
+        console.log('[진단 1단계] 오디오 데이터:', audioBlob.size, 'bytes', '타입:', audioBlob.type);
+        
         sendAudioForAnalysis(audioBlob);
       };
 
@@ -225,16 +229,38 @@ export default function AudioRecorder({ userId, onComplete, onRetry }) {
       formData.append('userId', userId);
       formData.append('transcript', finalText); // 브라우저 STT 결과 전송
 
+      // [진단 2단계] STT API 요청 확인
+      console.log('[진단 2단계] STT API 요청 헤더:', {
+        method: 'POST',
+        url: '/api/voice/transcribe',
+        contentType: '(multipart/form-data - FormData)'
+      });
+      console.log('[진단 2단계] STT API 요청 본문:', {
+        audioSize: audioBlob.size,
+        audioType: audioBlob.type,
+        userId: userId,
+        transcriptLength: finalText.length,
+        transcriptPreview: finalText.substring(0, 100)
+      });
+
       const response = await fetch('/api/voice/transcribe', {
         method: 'POST',
         body: formData
       });
 
+      // [진단 3단계] STT API 응답 상태 확인
+      console.log('[진단 3단계] STT API 응답 상태:', response.status, response.statusText);
+      
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[진단 3단계] STT API 에러 응답:', errorText);
         throw new Error('서버 응답 오류');
       }
 
       const result = await response.json();
+      
+      // [진단 3단계] STT API 응답 전체 데이터
+      console.log('[진단 3단계] STT API 응답 전체:', result);
 
       if (result.status === 'OK') {
         // 성공: 요약 결과 표시
@@ -253,7 +279,13 @@ export default function AudioRecorder({ userId, onComplete, onRetry }) {
       }
 
     } catch (error) {
-      console.error('오디오 분석 오류:', error);
+      // [진단 3단계] 에러 발생 시
+      console.error('[진단 3단계] STT API 에러:', error);
+      console.error('[진단 3단계] 에러 상세:', {
+        message: error.message,
+        stack: error.stack
+      });
+      
       setErrorMessage('음성 처리 중 오류가 발생했습니다. 다시 시도해주세요.');
       setUiState('ERROR');
     }

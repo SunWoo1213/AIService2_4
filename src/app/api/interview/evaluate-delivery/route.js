@@ -7,6 +7,19 @@ export async function POST(request) {
     const question = formData.get('question');
     const transcript = formData.get('transcript'); // SpeechRecognition으로 얻은 텍스트
 
+    // [진단 2단계] 받은 데이터 확인
+    console.log('[진단 2단계 - 서버] 받은 오디오 파일:', {
+      name: audioFile ? audioFile.name : '(없음)',
+      type: audioFile ? audioFile.type : '(없음)',
+      size: audioFile ? audioFile.size : 0
+    });
+    console.log('[진단 2단계 - 서버] 받은 transcript:', {
+      value: transcript,
+      type: typeof transcript,
+      length: transcript ? transcript.length : 0,
+      preview: transcript ? transcript.substring(0, 100) : '(없음)'
+    });
+
     if (!audioFile || !question) {
       return NextResponse.json(
         { error: '필수 정보가 누락되었습니다.' },
@@ -22,8 +35,25 @@ export async function POST(request) {
     // [유효성 검사] transcript가 비어있거나 너무 짧으면 즉시 반환
     const trimmedTranscript = transcript ? transcript.trim() : '';
     
+    console.log('[진단 4단계] transcript 검사:', {
+      original: transcript,
+      trimmed: trimmedTranscript,
+      length: trimmedTranscript.length,
+      isEmpty: !trimmedTranscript || trimmedTranscript.length === 0
+    });
+    
     // null, undefined, 빈 문자열 체크
     if (!trimmedTranscript || trimmedTranscript.length === 0) {
+      console.log('[진단 4단계] "답변 없음" 처리됨 (transcript가 비어있음)');
+      console.log('[진단 4단계] 원본 transcript 값:', {
+        transcript: transcript,
+        trimmedTranscript: trimmedTranscript,
+        type: typeof transcript,
+        isNull: transcript === null,
+        isUndefined: transcript === undefined,
+        isEmpty: transcript === ''
+      });
+      
       return NextResponse.json({
         contentFeedback: {
           advice: '답변이 감지되지 않았습니다. 다시 한번 말씀해 주시겠어요?'
@@ -37,7 +67,20 @@ export async function POST(request) {
       trimmedTranscript.toLowerCase().includes(pattern)
     );
 
+    console.log('[진단 4단계] 짧은 답변 검사:', {
+      length: trimmedTranscript.length,
+      isMeaningless: isMeaningless,
+      matchedPatterns: meaninglessPatterns.filter(p => trimmedTranscript.toLowerCase().includes(p))
+    });
+
     if (trimmedTranscript.length < 15 || isMeaningless) {
+      console.log('[진단 4단계] "답변 없음" 처리됨 (답변이 너무 짧거나 의미 없음)');
+      console.log('[진단 4단계] 원본 transcript 값:', {
+        transcript: trimmedTranscript,
+        length: trimmedTranscript.length,
+        isMeaningless: isMeaningless
+      });
+      
       return NextResponse.json({
         contentFeedback: {
           advice: '답변이 너무 짧거나 명확하지 않습니다. 좀 더 구체적으로 답변해 주시겠어요?'
@@ -57,6 +100,8 @@ export async function POST(request) {
     } else {
       try {
         // Whisper API로 오디오 전사 (더 정확한 텍스트 추출)
+        console.log('[진단 3단계 - Whisper] Whisper API 요청 시작');
+        
         const transcriptionResponse = await fetch(`${llmApiUrl}/audio/transcriptions`, {
           method: 'POST',
           headers: {
@@ -71,18 +116,45 @@ export async function POST(request) {
           })()
         });
 
+        console.log('[진단 3단계 - Whisper] Whisper API 응답 상태:', transcriptionResponse.status);
+
         if (!transcriptionResponse.ok) {
+          const errorText = await transcriptionResponse.text();
+          console.error('[진단 3단계 - Whisper] Whisper API 에러:', errorText);
           throw new Error('Whisper API 호출 실패');
         }
 
         const transcriptionData = await transcriptionResponse.json();
+        console.log('[진단 3단계 - Whisper] Whisper API 응답 전체:', transcriptionData);
+        
         const whisperTranscript = transcriptionData.text || transcript;
+        console.log('[진단 3단계 - Whisper] Whisper 전사 결과:', {
+          length: whisperTranscript ? whisperTranscript.length : 0,
+          preview: whisperTranscript ? whisperTranscript.substring(0, 100) : '(없음)'
+        });
 
         // [유효성 검사] Whisper API 결과도 재검사 (더 정확한 전사 결과)
         const whisperTrimmed = whisperTranscript ? whisperTranscript.trim() : '';
         
+        console.log('[진단 4단계] Whisper transcript 검사:', {
+          original: whisperTranscript,
+          trimmed: whisperTrimmed,
+          length: whisperTrimmed.length,
+          isEmpty: !whisperTrimmed || whisperTrimmed.length === 0
+        });
+        
         // null, undefined, 빈 문자열 체크
         if (!whisperTrimmed || whisperTrimmed.length === 0) {
+          console.log('[진단 4단계] "답변 없음" 처리됨 (Whisper transcript가 비어있음)');
+          console.log('[진단 4단계] 원본 transcript 값:', {
+            whisperTranscript: whisperTranscript,
+            whisperTrimmed: whisperTrimmed,
+            type: typeof whisperTranscript,
+            isNull: whisperTranscript === null,
+            isUndefined: whisperTranscript === undefined,
+            isEmpty: whisperTranscript === ''
+          });
+          
           return NextResponse.json({
             contentFeedback: {
               advice: '답변이 감지되지 않았습니다. 다시 한번 말씀해 주시겠어요?'
@@ -96,7 +168,20 @@ export async function POST(request) {
           whisperTrimmed.toLowerCase().includes(pattern)
         );
 
+        console.log('[진단 4단계] Whisper 짧은 답변 검사:', {
+          length: whisperTrimmed.length,
+          isMeaningless: isMeaningless,
+          matchedPatterns: meaninglessPatterns.filter(p => whisperTrimmed.toLowerCase().includes(p))
+        });
+
         if (whisperTrimmed.length < 15 || isMeaningless) {
+          console.log('[진단 4단계] "답변 없음" 처리됨 (Whisper 답변이 너무 짧거나 의미 없음)');
+          console.log('[진단 4단계] 원본 transcript 값:', {
+            whisperTrimmed: whisperTrimmed,
+            length: whisperTrimmed.length,
+            isMeaningless: isMeaningless
+          });
+          
           return NextResponse.json({
             contentFeedback: {
               advice: '답변이 너무 짧거나 명확하지 않습니다. 좀 더 구체적으로 답변해 주시겠어요?'
@@ -130,6 +215,8 @@ export async function POST(request) {
 `;
 
         // LLM API 호출
+        console.log('[진단 3단계 - LLM] LLM API 요청 시작');
+        
         const llmResponse = await fetch(`${llmApiUrl}/chat/completions`, {
           method: 'POST',
           headers: {
@@ -154,16 +241,27 @@ export async function POST(request) {
           })
         });
 
+        console.log('[진단 3단계 - LLM] LLM API 응답 상태:', llmResponse.status);
+
         if (!llmResponse.ok) {
+          const errorText = await llmResponse.text();
+          console.error('[진단 3단계 - LLM] LLM API 에러:', errorText);
           throw new Error('LLM API 호출 실패');
         }
 
         const llmData = await llmResponse.json();
+        console.log('[진단 3단계 - LLM] LLM API 응답 전체:', llmData);
+        
         const content = llmData.choices[0].message.content;
         analysisResult = JSON.parse(content);
 
       } catch (error) {
-        console.error('Whisper/LLM API 오류:', error);
+        console.error('[진단 3단계] Whisper/LLM API 에러:', error);
+        console.error('[진단 3단계] 에러 상세:', {
+          message: error.message,
+          stack: error.stack
+        });
+        
         // 폴백: 기본 피드백 제공
         analysisResult = {
           contentFeedback: {

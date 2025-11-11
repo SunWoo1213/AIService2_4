@@ -1,6 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -15,6 +16,7 @@ const firebaseConfig = {
 let app = null;
 let auth = null;
 let db = null;
+let storage = null;
 
 // Firebase 환경 변수가 모두 설정되어 있는지 확인
 const isFirebaseConfigured = firebaseConfig.apiKey && 
@@ -30,6 +32,7 @@ if (isFirebaseConfigured) {
     }
     auth = getAuth(app);
     db = getFirestore(app);
+    storage = getStorage(app);
   } catch (error) {
     console.warn('Firebase initialization failed:', error.message);
   }
@@ -37,6 +40,6 @@ if (isFirebaseConfigured) {
   console.warn('Firebase config is not fully set. Running in development mode without Firebase.');
 }
 
-export { auth, db };
+export { auth, db, storage };
 export default app;
 

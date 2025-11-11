@@ -81,6 +81,63 @@
 }
 ```
 
+## interview_answers 컬렉션 (새로 추가)
+
+면접 답변과 오디오 녹음을 저장하는 컬렉션입니다.
+
+### 필드 구조
+
+```javascript
+{
+  // 기본 정보
+  userId: string,              // 사용자 ID
+  interviewId: string,         // 면접 세션 ID (예: interview_1699999999999)
+  questionId: string,          // 질문 ID (예: q1, q2, q3)
+  
+  // 질문과 답변
+  question: string,            // 면접 질문 내용
+  transcript: string,          // STT로 변환된 답변 텍스트
+  
+  // 오디오 파일
+  audioURL: string | null,     // Firebase Storage 다운로드 URL
+  
+  // 피드백
+  feedback: string,            // AI 피드백 내용
+  score: number | null,        // 점수 (0-10)
+  
+  // 메타데이터
+  duration: number,            // 녹음 시간 (초)
+  timestamp: timestamp,        // Firestore 타임스탬프
+  createdAt: string,           // ISO 문자열 날짜
+}
+```
+
+### 인덱스 설계
+
+```javascript
+// Firestore Composite Index
+{
+  collection: 'interview_answers',
+  fields: [
+    { fieldPath: 'userId', order: 'ASCENDING' },
+    { fieldPath: 'interviewId', order: 'ASCENDING' },
+    { fieldPath: 'timestamp', order: 'DESCENDING' }
+  ]
+}
+```
+
+### Storage 구조
+
+```
+gs://[your-bucket]/recordings/
+  ├── [userId]/
+  │   ├── [interviewId]/
+  │   │   ├── q1_1699999999999.webm
+  │   │   ├── q2_1699999999999.webm
+  │   │   ├── q3_1699999999999.webm
+  │   │   └── ...
+```
+
 ## feedbacks 컬렉션 확장
 
 기존 feedbacks 컬렉션에 새로운 필드를 추가합니다.
@@ -129,6 +186,16 @@ service cloud.firestore {
                             resource.data.user_id == request.auth.uid;
     }
     
+    // interview_answers: 본인만 읽기/쓰기 가능
+    match /interview_answers/{answerId} {
+      allow read: if request.auth != null && 
+                     resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && 
+                       request.resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && 
+                       resource.data.userId == request.auth.uid;
+    }
+    
     // feedbacks: 기존 규칙 유지 (본인만 접근)
     match /feedbacks/{feedbackId} {
       allow read: if request.auth != null && 
@@ -137,6 +204,21 @@ service cloud.firestore {
                        request.resource.data.userId == request.auth.uid;
       allow update: if request.auth != null && 
                        resource.data.userId == request.auth.uid;
+    }
+  }
+}
+```
+
+## Firebase Storage 보안 규칙
+
+```javascript
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // 녹음 파일: 본인만 읽기/쓰기 가능
+    match /recordings/{userId}/{interviewId}/{fileName} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
@@ -236,5 +318,6 @@ exports.cleanupExpiredTranscriptions = functions.pubsub
 - user_preferences는 단일 문서 조회만 사용 (user_id로 직접 접근)
 - voice_transcriptions는 만료 시간 인덱스 필요
 - feedbacks는 기존 인덱스 활용 (userId + createdAt)
+
 
 

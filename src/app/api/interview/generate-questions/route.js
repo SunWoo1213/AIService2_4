@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
-    const { jobKeywords, resumeText } = await request.json();
+    const { jobKeywords, resumeText, previousAnswer, previousQuestion, questionCount = 0 } = await request.json();
 
     if (!jobKeywords || !resumeText) {
       return NextResponse.json(
@@ -11,51 +11,78 @@ export async function POST(request) {
       );
     }
 
-    const prompt = `You are an interviewer for a technical role. Based on the following information:
+    let prompt;
+    
+    // 이전 답변이 있으면 꼬리 질문 생성 모드
+    if (previousAnswer && previousQuestion) {
+      prompt = `You are an interviewer conducting a follow-up interview. Based on the following:
 
 **Job Posting**: ${JSON.stringify(jobKeywords)}
 
 **Candidate's Resume**: ${resumeText}
 
-Generate 5 interview questions focused on their major and technical skills. For each question, specify a time limit.
-- 3 questions should be long-answer (60 seconds)
-- 2 questions should be short-answer (20 seconds)
+**Previous Question**: ${previousQuestion}
 
-Return a JSON array in this format:
-[{"question": "질문 내용 (in Korean)", "time_limit": 60}, ...]
+**Candidate's Previous Answer**: ${previousAnswer}
 
-Provide ONLY the JSON array, no additional text. Questions should be in Korean.`;
+Generate ONE follow-up question that:
+1. Critically examines or probes deeper into their previous answer
+2. Identifies vague points or generalizations in their answer and asks for specifics
+3. Challenges assumptions or asks for evidence/examples
+4. Tests consistency with their resume or previously stated information
+
+The question should be in Korean and feel natural as a follow-up. Time limit should be 60 seconds for detailed answers or 20 seconds for clarifications.
+
+Return a JSON object in this format:
+{"question": "질문 내용 (in Korean)", "time_limit": 60}
+
+Provide ONLY the JSON object, no additional text.`;
+    } else {
+      // 첫 질문 생성 모드
+      prompt = `You are an interviewer for a technical role. Based on the following information:
+
+**Job Posting**: ${JSON.stringify(jobKeywords)}
+
+**Candidate's Resume**: ${resumeText}
+
+Generate ONE initial interview question focused on their major and technical skills. The question should be open-ended and allow the candidate to showcase their experience.
+
+Time limit should be 60 seconds.
+
+Return a JSON object in this format:
+{"question": "질문 내용 (in Korean)", "time_limit": 60}
+
+Provide ONLY the JSON object, no additional text. Questions should be in Korean.`;
+    }
 
     const llmApiKey = process.env.LLM_API_KEY;
     const llmApiUrl = process.env.LLM_API_URL || 'https://api.openai.com/v1/chat/completions';
 
-    let questions;
+    let question;
 
     if (!llmApiKey) {
       // LLM API가 설정되지 않은 경우 샘플 응답
-      console.warn('LLM_API_KEY not set. Returning sample questions.');
-      questions = [
-        {
-          question: "본인의 강점과 약점을 말씀해주세요.",
+      console.warn('LLM_API_KEY not set. Returning sample question.');
+      
+      if (previousAnswer && previousQuestion) {
+        // 꼬리 질문 샘플
+        question = {
+          question: "방금 말씀하신 내용에서 구체적으로 어떤 기술을 사용하셨나요?",
           time_limit: 60
-        },
-        {
-          question: "이 직무에 지원하게 된 동기는 무엇인가요?",
+        };
+      } else {
+        // 첫 질문 샘플
+        const sampleQuestions = [
+          "본인의 가장 자신있는 프로젝트 경험을 설명해주세요.",
+          "이 직무에 지원하게 된 동기는 무엇인가요?",
+          "팀 프로젝트에서 갈등이 발생했을 때 어떻게 해결하셨나요?",
+          "가장 기억에 남는 기술적 도전 과제는 무엇이었나요?"
+        ];
+        question = {
+          question: sampleQuestions[questionCount % sampleQuestions.length],
           time_limit: 60
-        },
-        {
-          question: "팀 프로젝트에서 갈등이 발생했을 때 어떻게 해결하셨나요?",
-          time_limit: 60
-        },
-        {
-          question: "가장 자신있는 기술 스택은 무엇인가요?",
-          time_limit: 20
-        },
-        {
-          question: "5년 후 본인의 모습을 그려보신다면?",
-          time_limit: 20
-        }
-      ];
+        };
+      }
     } else {
       const llmResponse = await fetch(llmApiUrl, {
         method: 'POST',
@@ -76,7 +103,7 @@ Provide ONLY the JSON array, no additional text. Questions should be in Korean.`
             }
           ],
           temperature: 0.8,
-          max_tokens: 1000
+          max_tokens: 500
         })
       });
 
@@ -87,15 +114,16 @@ Provide ONLY the JSON array, no additional text. Questions should be in Korean.`
       const llmData = await llmResponse.json();
       const content = llmData.choices[0].message.content;
       
-      const jsonMatch = content.match(/\[[\s\S]*\]/);
+      // JSON 객체 파싱 (배열이 아닌 단일 객체)
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         throw new Error('Invalid JSON response from LLM');
       }
       
-      questions = JSON.parse(jsonMatch[0]);
+      question = JSON.parse(jsonMatch[0]);
     }
 
-    return NextResponse.json({ questions });
+    return NextResponse.json({ question });
 
   } catch (error) {
     console.error('Question generation error:', error);
