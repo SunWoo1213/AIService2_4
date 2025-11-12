@@ -19,6 +19,10 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
   const [streamingQuestion, setStreamingQuestion] = useState(''); // 스트리밍 중인 질문
   const [isStreaming, setIsStreaming] = useState(false); // 스트리밍 상태
   const MAX_QUESTIONS = 5; // 최대 질문 수
+  
+  // ===== [마이크 선택 기능] State 추가 =====
+  const [audioDevices, setAudioDevices] = useState([]); // 사용 가능한 마이크 목록
+  const [selectedDeviceId, setSelectedDeviceId] = useState(''); // 선택된 마이크 ID (빈 문자열 = 기본 마이크)
 
   const recognitionRef = useRef(null);
   const timerRef = useRef(null);
@@ -118,6 +122,66 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
     }
   }, []);
 
+  // ===== [마이크 선택 기능] 마이크 목록 불러오기 및 장치 변경 감지 =====
+  useEffect(() => {
+    if (typeof window === 'undefined' || !navigator.mediaDevices) {
+      console.warn('⚠️ MediaDevices API를 사용할 수 없습니다.');
+      return;
+    }
+
+    // 마이크 목록을 가져오는 함수
+    const loadAudioDevices = async () => {
+      try {
+        // 마이크 권한 요청 (권한이 있어야 label이 표시됨)
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // 모든 미디어 장치 가져오기
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        
+        // 오디오 입력 장치만 필터링
+        const audioInputs = devices.filter(device => device.kind === 'audioinput');
+        
+        console.log('========================================');
+        console.log('[마이크 선택] 사용 가능한 오디오 입력 장치:', audioInputs.length, '개');
+        audioInputs.forEach((device, index) => {
+          console.log(`[마이크 ${index + 1}] ID: ${device.deviceId}`);
+          console.log(`         Label: ${device.label || '(권한 필요)'}`);
+          console.log(`         GroupId: ${device.groupId}`);
+        });
+        console.log('========================================');
+        
+        setAudioDevices(audioInputs);
+        
+        // 기본 마이크가 선택되지 않았다면 첫 번째 장치를 선택
+        if (!selectedDeviceId && audioInputs.length > 0) {
+          setSelectedDeviceId(audioInputs[0].deviceId);
+          console.log('[마이크 선택] 기본 마이크 자동 선택:', audioInputs[0].label);
+        }
+      } catch (error) {
+        console.error('[마이크 선택] 장치 목록 가져오기 실패:', error);
+        if (error.name === 'NotAllowedError') {
+          console.warn('⚠️ 마이크 권한이 거부되었습니다. 사용자가 권한을 허용해야 마이크 목록을 볼 수 있습니다.');
+        }
+      }
+    };
+
+    // 초기 로드
+    loadAudioDevices();
+
+    // 장치 변경 감지 (마이크 연결/연결 해제 시 자동 갱신)
+    const handleDeviceChange = () => {
+      console.log('[마이크 선택] 🔄 장치 변경 감지됨, 목록 갱신 중...');
+      loadAudioDevices();
+    };
+
+    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+
+    // Cleanup
+    return () => {
+      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+    };
+  }, [selectedDeviceId]);
+
   // 질문 변경 시: 타이머 리셋 및 TTS 시작 (자동 녹음 제거)
   useEffect(() => {
     if (currentQuestion && typeof window !== 'undefined' && window.speechSynthesis) {
@@ -176,7 +240,20 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
       recordingStartTimeRef.current = Date.now();
       console.log('녹음 시작:', new Date(recordingStartTimeRef.current).toLocaleTimeString());
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // ===== [마이크 선택 기능] 선택된 마이크로 녹음 =====
+      const audioConstraints = selectedDeviceId 
+        ? { deviceId: { exact: selectedDeviceId } }  // 특정 마이크 선택
+        : true;  // 기본 마이크 사용
+
+      console.log('[마이크 선택] 사용할 마이크 ID:', selectedDeviceId || '(기본 마이크)');
+      const selectedDevice = audioDevices.find(device => device.deviceId === selectedDeviceId);
+      if (selectedDevice) {
+        console.log('[마이크 선택] 사용할 마이크 이름:', selectedDevice.label);
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: audioConstraints 
+      });
       audioStreamRef.current = stream;
 
       mediaRecorderRef.current = new MediaRecorder(stream, {
@@ -981,6 +1058,45 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
           <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-800 rounded-lg">
             <p className="font-medium">⚠️ 음성 인식이 지원되지 않습니다.</p>
             <p className="text-sm mt-1">Chrome 브라우저를 사용해주세요.</p>
+          </div>
+        )}
+
+        {/* ===== [마이크 선택 기능] 마이크 선택 드롭다운 ===== */}
+        {!isRecording && !isTimerRunning && audioDevices.length > 0 && (
+          <div className="mb-4 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0 mt-1">
+                <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <label htmlFor="microphone-select" className="block text-sm font-semibold text-blue-900 mb-2">
+                  🎙️ 마이크 선택
+                </label>
+                <select
+                  id="microphone-select"
+                  value={selectedDeviceId}
+                  onChange={(e) => {
+                    setSelectedDeviceId(e.target.value);
+                    console.log('[마이크 선택] 사용자가 마이크 변경:', e.target.options[e.target.selectedIndex].text);
+                  }}
+                  className="w-full px-3 py-2 bg-white border-2 border-blue-300 rounded-lg 
+                           text-gray-800 font-medium
+                           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                           hover:border-blue-400 transition-colors cursor-pointer"
+                >
+                  {audioDevices.map((device) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `마이크 ${audioDevices.indexOf(device) + 1}`}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-blue-700 mt-2">
+                  💡 외부 마이크를 연결하셨다면 위에서 선택해주세요. 더 나은 음질로 녹음됩니다.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
