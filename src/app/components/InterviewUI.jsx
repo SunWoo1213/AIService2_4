@@ -5,7 +5,7 @@ import Button from './ui/Button';
 import Card from './ui/Card';
 import { storage, db } from '@/firebase/config';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, query, where, getDocs } from 'firebase/firestore';
 
 export default function InterviewUI({ userId, initialQuestion, jobKeywords, resumeText, onComplete, tonePreference = 'friendly' }) {
   const [currentQuestion, setCurrentQuestion] = useState(initialQuestion);
@@ -539,6 +539,22 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
       
       // ===== [에러 핸들링 2단계] Firestore 저장 try-catch =====
       try {
+        // ===== [저장 실패 추적] 저장 직전에 기존 데이터 개수 확인 =====
+        console.log('[백그라운드 평가] 🔍 저장 직전 - 기존 데이터 개수 확인 중...');
+        try {
+          const checkQuery = query(
+            collection(db, 'interview_answers'),
+            where('userId', '==', userId),
+            where('interviewId', '==', interviewId)
+          );
+          const checkSnapshot = await getDocs(checkQuery);
+          console.log('[백그라운드 평가] 📊 현재 이 면접의 답변 개수:', checkSnapshot.size, '개');
+          console.log('[백그라운드 평가] 📝 이제 저장하면 총', checkSnapshot.size + 1, '개가 됩니다.');
+        } catch (checkError) {
+          console.warn('[백그라운드 평가] ⚠️ 개수 확인 실패 (무시하고 계속):', checkError.message);
+        }
+        
+        console.log('[백그라운드 평가] 💾 addDoc 실행 중...');
         const docRef = await addDoc(collection(db, 'interview_answers'), answerData);
         
         // ===== [진단 1단계] DB 업데이트 성공 로깅 =====

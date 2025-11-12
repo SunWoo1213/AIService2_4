@@ -158,12 +158,67 @@ export default function InterviewPage() {
 
   const handleInterviewComplete = async (interviewId) => {
     try {
-      // interviewId를 받아서 결과 페이지로 리다이렉트
-      console.log('면접 완료, interviewId:', interviewId);
+      // ===== [히스토리 저장] 면접 세션 요약을 feedbacks 컬렉션에 저장 =====
+      console.log('========================================');
+      console.log('[면접 완료] handleInterviewComplete 실행');
+      console.log('[면접 완료] - interviewId:', interviewId);
+      console.log('[면접 완료] - userId:', user.uid);
+      console.log('[면접 완료] - 현재 시각:', new Date().toISOString());
+      console.log('========================================');
+      
+      // Feedbacks 컬렉션에 면접 세션 요약 저장
+      console.log('[면접 완료] 💾 feedbacks 컬렉션에 저장 시작...');
+      
+      const interviewSummary = {
+        userId: user.uid,
+        type: 'interview',
+        interviewId: interviewId, // 고유한 면접 세션 ID
+        resumeText: selectedFeedback?.resumeText || '',
+        jobKeywords: selectedFeedback?.jobKeywords || {},
+        tonePreference: selectedTone || defaultTone,
+        createdAt: new Date().toISOString(),
+        timestamp: new Date()
+      };
+      
+      console.log('[면접 완료] 📝 저장할 데이터:', {
+        userId: interviewSummary.userId,
+        type: interviewSummary.type,
+        interviewId: interviewSummary.interviewId,
+        tonePreference: interviewSummary.tonePreference,
+        createdAt: interviewSummary.createdAt
+      });
+      
+      const docRef = await addDoc(collection(db, 'feedbacks'), interviewSummary);
+      
+      console.log('========================================');
+      console.log('[면접 완료] ✅✅✅ feedbacks 컬렉션 저장 성공! ✅✅✅');
+      console.log('[면접 완료] - 저장된 문서 ID:', docRef.id);
+      console.log('[면접 완료] - 컬렉션:', 'feedbacks');
+      console.log('[면접 완료] - 타입:', 'interview');
+      console.log('[면접 완료] 💡 이제 히스토리 페이지에서 이 면접을 볼 수 있습니다!');
+      console.log('========================================');
+      
+      // 결과 페이지로 리다이렉트
+      console.log('[면접 완료] 🚀 결과 페이지로 리다이렉트:', `/interview/result/${interviewId}`);
       router.push(`/interview/result/${interviewId}`);
     } catch (error) {
-      console.error('Error redirecting to results:', error);
-      alert('결과 페이지로 이동 중 오류가 발생했습니다.');
+      console.error('========================================');
+      console.error('[면접 완료] ❌❌❌ 에러 발생! ❌❌❌');
+      console.error('[면접 완료] - 에러 객체:', error);
+      console.error('[면접 완료] - error.code:', error.code);
+      console.error('[면접 완료] - error.message:', error.message);
+      console.error('[면접 완료] - error.name:', error.name);
+      
+      if (error.code === 'permission-denied') {
+        console.error('[면접 완료] 🔍 원인: Firestore Rules 권한 거부');
+        console.error('[면접 완료] - 현재 user.uid:', user.uid);
+        console.error('[면접 완료] 💡 해결방법: Firestore Rules에서 feedbacks write 권한 확인');
+      }
+      console.error('========================================');
+      
+      // 에러가 발생해도 결과 페이지로 이동 (면접 답변은 이미 저장됨)
+      console.warn('[면접 완료] ⚠️ feedbacks 저장 실패했지만 결과 페이지로 이동합니다.');
+      router.push(`/interview/result/${interviewId}`);
     }
   };
 
