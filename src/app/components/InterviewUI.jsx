@@ -794,32 +794,118 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
     return <div>질문을 불러오는 중...</div>;
   }
 
+  // ===== [로딩 UI] 답변 제출 후 다음 질문 준비 중 =====
   if (isProcessing) {
     if (isStreaming && streamingQuestion) {
       // 스트리밍 중: 질문이 타이핑되듯이 표시
       return (
-        <Card className="text-center py-12">
-          <div className="text-4xl mb-4">✨</div>
-          <h3 className="text-xl font-bold text-gray-800 mb-4">다음 질문이 생성되고 있습니다...</h3>
-          <div className="text-left max-w-2xl mx-auto bg-blue-50 border-2 border-blue-200 rounded-lg p-6">
-            <p className="text-lg text-gray-800 whitespace-pre-wrap">
-              {streamingQuestion}
-              <span className="inline-block w-2 h-5 bg-primary-600 ml-1 animate-pulse"></span>
-            </p>
-          </div>
-          <p className="text-gray-500 text-sm mt-4">답변 평가는 백그라운드에서 진행됩니다</p>
-        </Card>
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
+          <Card className="max-w-3xl w-full">
+            <div className="text-center py-8">
+              {/* 애니메이션 아이콘 */}
+              <div className="mb-6">
+                <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-primary-500 to-indigo-600 rounded-full animate-pulse">
+                  <span className="text-4xl">✨</span>
+                </div>
+              </div>
+
+              {/* 메인 메시지 */}
+              <h2 className="text-2xl font-bold text-gray-900 mb-3">
+                AI 면접관이 다음 질문을 생성하고 있습니다
+              </h2>
+              <p className="text-gray-600 mb-6">
+                답변을 분석하고 맞춤형 질문을 준비 중입니다
+              </p>
+
+              {/* 스트리밍 질문 표시 */}
+              <div className="text-left bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-indigo-200 rounded-xl p-6 shadow-inner">
+                <div className="flex items-start space-x-3 mb-3">
+                  <span className="text-xl">💭</span>
+                  <p className="text-sm font-semibold text-indigo-900">생성 중인 질문</p>
+                </div>
+                <p className="text-base text-gray-800 leading-relaxed whitespace-pre-wrap">
+                  {streamingQuestion}
+                  <span className="inline-block w-2 h-5 bg-indigo-600 ml-1 animate-pulse"></span>
+                </p>
+              </div>
+
+              {/* 안내 메시지 */}
+              <div className="mt-6 flex items-center justify-center space-x-2 text-sm text-gray-500">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span>답변 평가는 백그라운드에서 자동 진행됩니다</span>
+              </div>
+            </div>
+          </Card>
+        </div>
       );
     } else {
-      // 스트리밍 전: 로딩
+      // 스트리밍 전: 깔끔한 로딩 UI
       return (
-        <Card className="text-center py-12">
-          <div className="text-4xl mb-4">🤔</div>
-          <h3 className="text-xl font-bold text-gray-800 mb-2">다음 질문을 준비하는 중...</h3>
-          <p className="text-gray-600 mb-4">곧 질문이 표시됩니다</p>
-          <div className="animate-spin mx-auto w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full"></div>
-          <p className="text-gray-500 text-sm mt-4">답변 평가는 백그라운드에서 진행됩니다</p>
-        </Card>
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
+          <Card className="max-w-2xl w-full">
+            <div className="text-center py-12 px-6">
+              {/* 애니메이션 아이콘 */}
+              <div className="mb-8 relative">
+                {/* 외부 원 */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-24 h-24 border-4 border-primary-200 rounded-full animate-ping opacity-75"></div>
+                </div>
+                {/* 중간 원 */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-20 h-20 border-4 border-primary-300 rounded-full animate-pulse"></div>
+                </div>
+                {/* 중심 스피너 */}
+                <div className="relative flex items-center justify-center">
+                  <div className="w-16 h-16 border-4 border-primary-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="absolute text-2xl">🤖</span>
+                </div>
+              </div>
+
+              {/* 메인 메시지 */}
+              <h2 className="text-2xl font-bold text-gray-900 mb-3">
+                AI 면접관이 답변을 분석하고 다음 질문을 준비 중입니다
+              </h2>
+              <p className="text-gray-600 mb-6">
+                잠시만 기다려 주세요. 곧 다음 질문이 표시됩니다
+              </p>
+
+              {/* 진행 단계 표시 */}
+              <div className="space-y-3 max-w-md mx-auto">
+                <div className="flex items-center space-x-3 text-sm">
+                  <div className="flex-shrink-0 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <span className="text-gray-700">답변 녹음 완료</span>
+                </div>
+                <div className="flex items-center space-x-3 text-sm">
+                  <div className="flex-shrink-0 w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
+                    <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                  </div>
+                  <span className="text-gray-700 font-medium">답변 내용 분석 중...</span>
+                </div>
+                <div className="flex items-center space-x-3 text-sm">
+                  <div className="flex-shrink-0 w-6 h-6 bg-gray-300 rounded-full"></div>
+                  <span className="text-gray-500">맞춤형 후속 질문 생성 대기</span>
+                </div>
+              </div>
+
+              {/* 안내 메시지 */}
+              <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-start space-x-2 text-sm text-blue-800">
+                  <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  <div className="text-left">
+                    <p className="font-semibold mb-1">답변 평가는 백그라운드에서 자동 진행됩니다</p>
+                    <p className="text-xs text-blue-700">면접이 끝난 후 결과 페이지에서 상세한 피드백을 확인하실 수 있습니다</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
       );
     }
   }
