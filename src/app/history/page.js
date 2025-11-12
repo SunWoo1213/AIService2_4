@@ -25,9 +25,25 @@ export default function HistoryPage() {
 
   useEffect(() => {
     const fetchFeedbacks = async () => {
-      if (!user) return;
+      // ===== [디버깅 2단계] ID 값 확인 =====
+      console.log('========================================');
+      console.log('[히스토리 페이지] fetchFeedbacks 실행');
+      console.log('[히스토리 페이지] - user 존재:', !!user);
+      console.log('[히스토리 페이지] - user.uid:', user?.uid || '(undefined)');
+      console.log('========================================');
+      
+      if (!user) {
+        console.warn('[히스토리 페이지] ⚠️ user가 없어서 데이터 조회를 건너뜁니다.');
+        return;
+      }
 
       try {
+        // ===== [디버깅 2단계] 쿼리 조건 확인 =====
+        console.log('[히스토리 페이지] 🔍 Firestore 데이터 조회 시작');
+        console.log('[히스토리 페이지] - 컬렉션 경로: feedbacks');
+        console.log('[히스토리 페이지] - 쿼리 조건: userId == ' + user.uid);
+        console.log('[히스토리 페이지] - 정렬 조건: createdAt desc');
+        
         const feedbacksRef = collection(db, 'feedbacks');
         const q = query(
           feedbacksRef,
@@ -35,25 +51,83 @@ export default function HistoryPage() {
           orderBy('createdAt', 'desc')
         );
         
+        console.log('[히스토리 페이지] ✅ 쿼리 생성 성공, getDocs 실행...');
         const querySnapshot = await getDocs(q);
+        
+        // ===== [디버깅 2단계] 스냅샷 로그 =====
+        console.log('========================================');
+        console.log('[히스토리 페이지] 📥 getDocs 결과');
+        console.log('[히스토리 페이지] - 스냅샷 비어있음:', querySnapshot.empty);
+        console.log('[히스토리 페이지] - 문서 개수:', querySnapshot.size);
+        
         const feedbackList = [];
         querySnapshot.forEach((doc) => {
+          console.log('[히스토리 페이지] 📄 문서 ID:', doc.id);
+          console.log('[히스토리 페이지] - doc.exists():', doc.exists());
+          console.log('[히스토리 페이지] - doc.data():', doc.data());
+          
           feedbackList.push({ id: doc.id, ...doc.data() });
         });
         
+        console.log('[히스토리 페이지] ✅ 총', feedbackList.length, '개의 피드백 데이터 로드됨');
+        if (feedbackList.length > 0) {
+          console.log('[히스토리 페이지] - 첫 번째 피드백 샘플:', {
+            id: feedbackList[0].id,
+            type: feedbackList[0].type,
+            createdAt: feedbackList[0].createdAt
+          });
+        } else {
+          console.warn('[히스토리 페이지] ⚠️ 경고: 피드백 데이터가 0개입니다!');
+        }
+        console.log('========================================');
+        
         setFeedbacks(feedbackList);
       } catch (error) {
-        console.error('Error fetching feedbacks:', error);
+        // ===== [디버깅 3단계] 에러 핸들링 강화 =====
+        console.error('========================================');
+        console.error('[히스토리 페이지] ❌❌❌ getDocs 에러 발생! ❌❌❌');
+        console.error('[히스토리 페이지] - 에러 객체:', error);
+        console.error('[히스토리 페이지] - error.code:', error.code);
+        console.error('[히스토리 페이지] - error.message:', error.message);
+        console.error('[히스토리 페이지] - error.name:', error.name);
         
-        // orderBy 에러 발생 시 (인덱스 없음) orderBy 없이 다시 시도
+        // ===== [디버깅 2단계] 인덱스 에러 검출 =====
+        if (error.code === 'failed-precondition' || error.message.includes('index') || error.message.includes('requires an index')) {
+          console.error('[히스토리 페이지] 🔍 원인: Firestore 복합 인덱스 누락!');
+          console.error('[히스토리 페이지] 💡 해결방법:');
+          console.error('[히스토리 페이지]   1. 아래 링크를 클릭하여 인덱스 자동 생성');
+          console.error('[히스토리 페이지]   2. 또는 Firebase Console → Firestore → Indexes에서 수동 생성');
+          console.error('[히스토리 페이지]   3. 인덱스 필드: userId (ASC) + createdAt (DESC)');
+          
+          // 인덱스 생성 링크 추출
+          const indexUrlMatch = error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]+/);
+          if (indexUrlMatch) {
+            console.error('[히스토리 페이지] 🔗🔗🔗 인덱스 생성 링크 (클릭하세요!): 🔗🔗🔗');
+            console.error(indexUrlMatch[0]);
+          }
+          
+          console.error('[히스토리 페이지] ⏳ orderBy 없이 재시도 중...');
+        } else if (error.code === 'permission-denied') {
+          console.error('[히스토리 페이지] 🔍 원인: Firestore Rules 권한 거부');
+          console.error('[히스토리 페이지] - 현재 user.uid:', user.uid);
+        }
+        console.error('========================================');
+        
+        // ===== [디버깅 2단계] orderBy 폴백 처리 =====
         try {
+          console.log('[히스토리 페이지] 🔄 Fallback: orderBy 없이 재시도');
+          
           const feedbacksRef = collection(db, 'feedbacks');
           const q = query(
             feedbacksRef,
             where('userId', '==', user.uid)
           );
           
+          console.log('[히스토리 페이지] ✅ 간단한 쿼리 생성 성공');
           const querySnapshot = await getDocs(q);
+          
+          console.log('[히스토리 페이지] 📥 Fallback getDocs 결과:', querySnapshot.size, '개');
+          
           const feedbackList = [];
           querySnapshot.forEach((doc) => {
             feedbackList.push({ id: doc.id, ...doc.data() });
@@ -64,9 +138,27 @@ export default function HistoryPage() {
             return new Date(b.createdAt) - new Date(a.createdAt);
           });
           
+          console.log('[히스토리 페이지] ✅ 클라이언트 측 정렬 완료:', feedbackList.length, '개');
           setFeedbacks(feedbackList);
         } catch (innerError) {
-          console.error('Error fetching feedbacks (fallback):', innerError);
+          // ===== [디버깅 3단계] 폴백 에러 핸들링 =====
+          console.error('========================================');
+          console.error('[히스토리 페이지] ❌❌❌ Fallback도 실패! ❌❌❌');
+          console.error('[히스토리 페이지] - 에러 객체:', innerError);
+          console.error('[히스토리 페이지] - error.code:', innerError.code);
+          console.error('[히스토리 페이지] - error.message:', innerError.message);
+          
+          if (innerError.code === 'permission-denied') {
+            console.error('[히스토리 페이지] 🔍 원인: Firestore Rules 권한 거부');
+            console.error('[히스토리 페이지] 💡 해결방법:');
+            console.error('[히스토리 페이지]   1. Firebase Console → Firestore Database → Rules');
+            console.error('[히스토리 페이지]   2. feedbacks 컬렉션의 read 권한 확인');
+            console.error('[히스토리 페이지]   3. 규칙 예시:');
+            console.error('[히스토리 페이지]      match /feedbacks/{document} {');
+            console.error('[히스토리 페이지]        allow read: if request.auth.uid == resource.data.userId;');
+            console.error('[히스토리 페이지]      }');
+          }
+          console.error('========================================');
         }
       } finally {
         setLoading(false);

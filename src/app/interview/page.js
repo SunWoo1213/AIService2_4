@@ -31,7 +31,17 @@ export default function InterviewPage() {
 
   useEffect(() => {
     const fetchPastFeedbacks = async () => {
-      if (!user) return;
+      // ===== [디버깅] ID 값 확인 =====
+      console.log('========================================');
+      console.log('[면접 페이지] fetchPastFeedbacks 실행');
+      console.log('[면접 페이지] - user 존재:', !!user);
+      console.log('[면접 페이지] - user.uid:', user?.uid || '(undefined)');
+      console.log('========================================');
+      
+      if (!user) {
+        console.warn('[면접 페이지] ⚠️ user가 없어서 데이터 조회를 건너뜁니다.');
+        return;
+      }
 
       try {
         // 사용자 기본 말투 설정 불러오기
@@ -39,9 +49,15 @@ export default function InterviewPage() {
         if (preferencesResponse.ok) {
           const preferencesData = await preferencesResponse.json();
           setDefaultTone(preferencesData.tone_preference || 'friendly');
-          console.log('기본 말투 설정 불러옴:', preferencesData.tone_preference);
+          console.log('[면접 페이지] ✅ 기본 말투 설정 불러옴:', preferencesData.tone_preference);
         }
 
+        // ===== [디버깅] 쿼리 조건 확인 =====
+        console.log('[면접 페이지] 🔍 Firestore 데이터 조회 시작');
+        console.log('[면접 페이지] - 컬렉션 경로: feedbacks');
+        console.log('[면접 페이지] - 쿼리 조건 1: userId == ' + user.uid);
+        console.log('[면접 페이지] - 쿼리 조건 2: type == resume');
+        
         const feedbacksRef = collection(db, 'feedbacks');
         const q = query(
           feedbacksRef,
@@ -49,15 +65,44 @@ export default function InterviewPage() {
           where('type', '==', 'resume')
         );
         
+        console.log('[면접 페이지] ✅ 쿼리 생성 성공, getDocs 실행...');
         const querySnapshot = await getDocs(q);
+        
+        // ===== [디버깅] 스냅샷 로그 =====
+        console.log('========================================');
+        console.log('[면접 페이지] 📥 getDocs 결과');
+        console.log('[면접 페이지] - 스냅샷 비어있음:', querySnapshot.empty);
+        console.log('[면접 페이지] - 문서 개수:', querySnapshot.size);
+        
         const feedbacks = [];
         querySnapshot.forEach((doc) => {
+          console.log('[면접 페이지] 📄 문서 ID:', doc.id);
           feedbacks.push({ id: doc.id, ...doc.data() });
         });
         
+        console.log('[면접 페이지] ✅ 총', feedbacks.length, '개의 자기소개서 피드백 로드됨');
+        console.log('========================================');
+        
         setPastFeedbacks(feedbacks);
       } catch (error) {
-        console.error('Error fetching feedbacks:', error);
+        // ===== [디버깅] 에러 핸들링 강화 =====
+        console.error('========================================');
+        console.error('[면접 페이지] ❌ 피드백 조회 에러 발생!');
+        console.error('[면접 페이지] - 에러 객체:', error);
+        console.error('[면접 페이지] - error.code:', error.code);
+        console.error('[면접 페이지] - error.message:', error.message);
+        
+        if (error.code === 'permission-denied') {
+          console.error('[면접 페이지] 🔍 원인: Firestore Rules 권한 거부');
+          console.error('[면접 페이지] - 현재 user.uid:', user.uid);
+        } else if (error.code === 'failed-precondition' || error.message.includes('index')) {
+          console.error('[면접 페이지] 🔍 원인: Firestore 인덱스 누락');
+          const indexUrlMatch = error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]+/);
+          if (indexUrlMatch) {
+            console.error('[면접 페이지] 🔗 인덱스 생성 링크:', indexUrlMatch[0]);
+          }
+        }
+        console.error('========================================');
       } finally {
         setLoading(false);
       }

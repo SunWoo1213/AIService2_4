@@ -25,16 +25,38 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!user) return;
+      // ===== [디버깅] ID 값 확인 =====
+      console.log('========================================');
+      console.log('[대시보드] fetchData 실행');
+      console.log('[대시보드] - user 존재:', !!user);
+      console.log('[대시보드] - user.uid:', user?.uid || '(undefined)');
+      console.log('========================================');
+      
+      if (!user) {
+        console.warn('[대시보드] ⚠️ user가 없어서 데이터 조회를 건너뜁니다.');
+        return;
+      }
 
       try {
         // Fetch profile
+        console.log('[대시보드] 🔍 프로필 조회 시작');
+        console.log('[대시보드] - 문서 경로: users/' + user.uid);
+        
         const profileDoc = await getDoc(doc(db, 'users', user.uid));
+        
+        console.log('[대시보드] 📄 프로필 문서');
+        console.log('[대시보드] - doc.exists():', profileDoc.exists());
+        
         if (profileDoc.exists()) {
+          console.log('[대시보드] - doc.data():', profileDoc.data());
           setProfile(profileDoc.data());
+        } else {
+          console.warn('[대시보드] ⚠️ 프로필 문서가 존재하지 않습니다.');
         }
 
         // Fetch stats
+        console.log('[대시보드] 🔍 통계 조회 시작');
+        
         const feedbacksRef = collection(db, 'feedbacks');
         const resumeQuery = query(
           feedbacksRef,
@@ -52,12 +74,35 @@ export default function DashboardPage() {
           getDocs(interviewQuery)
         ]);
 
+        console.log('[대시보드] 📊 통계 조회 완료');
+        console.log('[대시보드] - 자기소개서 피드백:', resumeSnap.size, '개');
+        console.log('[대시보드] - 면접 피드백:', interviewSnap.size, '개');
+
         setStats({
           resumeCount: resumeSnap.size,
           interviewCount: interviewSnap.size
         });
+        
+        console.log('[대시보드] ✅ 모든 데이터 로드 완료');
       } catch (error) {
-        console.error('Error fetching data:', error);
+        // ===== [디버깅] 에러 핸들링 강화 =====
+        console.error('========================================');
+        console.error('[대시보드] ❌ 데이터 조회 에러 발생!');
+        console.error('[대시보드] - 에러 객체:', error);
+        console.error('[대시보드] - error.code:', error.code);
+        console.error('[대시보드] - error.message:', error.message);
+        
+        if (error.code === 'permission-denied') {
+          console.error('[대시보드] 🔍 원인: Firestore Rules 권한 거부');
+          console.error('[대시보드] - 현재 user.uid:', user.uid);
+        } else if (error.code === 'failed-precondition' || error.message.includes('index')) {
+          console.error('[대시보드] 🔍 원인: Firestore 인덱스 누락');
+          const indexUrlMatch = error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]+/);
+          if (indexUrlMatch) {
+            console.error('[대시보드] 🔗 인덱스 생성 링크:', indexUrlMatch[0]);
+          }
+        }
+        console.error('========================================');
       } finally {
         setLoadingData(false);
       }

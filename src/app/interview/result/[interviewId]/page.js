@@ -27,40 +27,147 @@ export default function InterviewResultPage() {
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    if (!user || !interviewId) return;
+    // ===== [디버깅 1단계] ID 값 확인 =====
+    console.log('========================================');
+    console.log('[결과 페이지] useEffect 실행');
+    console.log('[결과 페이지] - user 존재:', !!user);
+    console.log('[결과 페이지] - user.uid:', user?.uid || '(undefined)');
+    console.log('[결과 페이지] - interviewId:', interviewId || '(undefined)');
+    console.log('[결과 페이지] - 데이터 타입:', {
+      userType: typeof user,
+      uidType: typeof user?.uid,
+      interviewIdType: typeof interviewId
+    });
+    console.log('========================================');
+    
+    if (!user || !interviewId) {
+      console.warn('[결과 페이지] ⚠️ user 또는 interviewId가 없어서 데이터 조회를 건너뜁니다.');
+      return;
+    }
 
-    console.log('면접 결과 페이지 로드:', interviewId);
+    // ===== [디버깅 1단계] Firestore 경로 확인 =====
+    console.log('[결과 페이지] 🔍 Firestore 데이터 조회 시작');
+    console.log('[결과 페이지] - 컬렉션 경로: interview_answers');
+    console.log('[결과 페이지] - 쿼리 조건 1: userId == ' + user.uid);
+    console.log('[결과 페이지] - 쿼리 조건 2: interviewId == ' + interviewId);
+    console.log('[결과 페이지] - 정렬 조건: timestamp asc');
 
     // Firestore에서 해당 interviewId의 모든 답변을 실시간으로 구독
     const answersRef = collection(db, 'interview_answers');
-    const q = query(
-      answersRef,
-      where('userId', '==', user.uid),
-      where('interviewId', '==', interviewId),
-      orderBy('timestamp', 'asc')
-    );
+    
+    try {
+      const q = query(
+        answersRef,
+        where('userId', '==', user.uid),
+        where('interviewId', '==', interviewId),
+        orderBy('timestamp', 'asc')
+      );
 
-    const unsubscribe = onSnapshot(
-      q,
-      (querySnapshot) => {
-        const answersData = [];
-        querySnapshot.forEach((doc) => {
-          answersData.push({ id: doc.id, ...doc.data() });
-        });
-        
-        console.log('실시간 답변 데이터 업데이트:', answersData.length, '개');
-        setAnswers(answersData);
-        setLoading(false);
-      },
-      (error) => {
-        console.error('답변 데이터 구독 오류:', error);
-        setError('답변 데이터를 불러오는 중 오류가 발생했습니다.');
-        setLoading(false);
-      }
-    );
+      console.log('[결과 페이지] ✅ 쿼리 생성 성공, onSnapshot 구독 시작...');
 
-    // 컴포넌트 언마운트 시 구독 해제
-    return () => unsubscribe();
+      const unsubscribe = onSnapshot(
+        q,
+        (querySnapshot) => {
+          // ===== [디버깅 1단계] 스냅샷 로그 =====
+          console.log('========================================');
+          console.log('[결과 페이지] 📥 onSnapshot 콜백 실행');
+          console.log('[결과 페이지] - 스냅샷 비어있음:', querySnapshot.empty);
+          console.log('[결과 페이지] - 문서 개수:', querySnapshot.size);
+          console.log('[결과 페이지] - 문서 메타데이터:', {
+            fromCache: querySnapshot.metadata.fromCache,
+            hasPendingWrites: querySnapshot.metadata.hasPendingWrites
+          });
+          
+          const answersData = [];
+          querySnapshot.forEach((doc) => {
+            console.log('[결과 페이지] 📄 문서 ID:', doc.id);
+            console.log('[결과 페이지] - doc.exists():', doc.exists());
+            console.log('[결과 페이지] - doc.data():', doc.data());
+            
+            answersData.push({ id: doc.id, ...doc.data() });
+          });
+          
+          console.log('[결과 페이지] ✅ 총', answersData.length, '개의 답변 데이터 로드됨');
+          if (answersData.length > 0) {
+            console.log('[결과 페이지] - 첫 번째 답변 샘플:', {
+              id: answersData[0].id,
+              questionId: answersData[0].questionId,
+              hasFeedback: !!answersData[0].feedback,
+              hasTranscript: !!answersData[0].transcript,
+              hasAudioURL: !!answersData[0].audioURL
+            });
+          } else {
+            console.warn('[결과 페이지] ⚠️ 경고: 답변 데이터가 0개입니다!');
+            console.warn('[결과 페이지] 💡 확인 사항:');
+            console.warn('[결과 페이지]   1. Firestore에 interview_answers 컬렉션이 존재하는가?');
+            console.warn('[결과 페이지]   2. userId와 interviewId가 일치하는 문서가 있는가?');
+            console.warn('[결과 페이지]   3. Firestore Rules에서 read 권한이 있는가?');
+          }
+          console.log('========================================');
+          
+          setAnswers(answersData);
+          setLoading(false);
+        },
+        (error) => {
+          // ===== [디버깅 3단계] 에러 핸들링 강화 =====
+          console.error('========================================');
+          console.error('[결과 페이지] ❌❌❌ onSnapshot 에러 발생! ❌❌❌');
+          console.error('[결과 페이지] - 에러 객체:', error);
+          console.error('[결과 페이지] - error.code:', error.code);
+          console.error('[결과 페이지] - error.message:', error.message);
+          console.error('[결과 페이지] - error.name:', error.name);
+          
+          // 에러 타입별 원인 분석
+          if (error.code === 'permission-denied') {
+            console.error('[결과 페이지] 🔍 원인: Firestore Rules 권한 거부');
+            console.error('[결과 페이지] 💡 해결방법:');
+            console.error('[결과 페이지]   1. Firebase Console → Firestore Database → Rules');
+            console.error('[결과 페이지]   2. interview_answers 컬렉션의 read 권한 확인');
+            console.error('[결과 페이지]   3. userId 일치 여부 확인');
+            console.error('[결과 페이지] - 현재 user.uid:', user.uid);
+            console.error('[결과 페이지] - 현재 interviewId:', interviewId);
+          } else if (error.code === 'failed-precondition' || error.message.includes('index')) {
+            console.error('[결과 페이지] 🔍 원인: Firestore 인덱스 누락');
+            console.error('[결과 페이지] 💡 해결방법:');
+            console.error('[결과 페이지]   1. 아래 링크를 클릭하여 인덱스 생성');
+            console.error('[결과 페이지]   2. 또는 Firebase Console에서 수동 생성');
+            
+            // 인덱스 생성 링크가 에러 메시지에 포함되어 있으면 추출
+            const indexUrlMatch = error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]+/);
+            if (indexUrlMatch) {
+              console.error('[결과 페이지] 🔗 인덱스 생성 링크:', indexUrlMatch[0]);
+            }
+          } else if (error.code === 'unavailable') {
+            console.error('[결과 페이지] 🔍 원인: 네트워크 연결 문제');
+            console.error('[결과 페이지] 💡 해결방법: 인터넷 연결 상태 확인');
+          } else {
+            console.error('[결과 페이지] 🔍 원인: 알 수 없는 에러');
+            console.error('[결과 페이지] 💡 해결방법: 위 에러 메시지를 확인하세요');
+          }
+          console.error('========================================');
+          
+          setError(`답변 데이터를 불러오는 중 오류가 발생했습니다. (${error.code || 'UNKNOWN'})`);
+          setLoading(false);
+        }
+      );
+
+      // 컴포넌트 언마운트 시 구독 해제
+      return () => {
+        console.log('[결과 페이지] 🔌 onSnapshot 구독 해제');
+        unsubscribe();
+      };
+    } catch (queryError) {
+      // Query 생성 중 에러 (인덱스 관련 에러가 여기서 발생할 수 있음)
+      console.error('========================================');
+      console.error('[결과 페이지] ❌ Query 생성 중 에러 발생!');
+      console.error('[결과 페이지] - 에러:', queryError);
+      console.error('[결과 페이지] - error.code:', queryError.code);
+      console.error('[결과 페이지] - error.message:', queryError.message);
+      console.error('========================================');
+      
+      setError('데이터 조회 설정 중 오류가 발생했습니다.');
+      setLoading(false);
+    }
   }, [user, interviewId, router]);
 
   if (authLoading || loading) {
