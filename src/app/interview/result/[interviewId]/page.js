@@ -289,15 +289,27 @@ export default function InterviewResultPage() {
                           </div>
                         );
                       } catch (e) {
-                        // JSON 파싱 실패 시 텍스트로 표시
+                        // JSON 파싱 실패 시 오류 메시지 표시
+                        console.error('[결과 페이지] JSON 파싱 실패:', e);
+                        console.error('[결과 페이지] 원본 feedback 데이터:', answer.feedback);
+                        
                         return (
-                          <div className="bg-gray-50 p-4 rounded-xl border-l-4 border-gray-400 shadow-sm">
+                          <div className="bg-orange-50 p-4 rounded-xl border-l-4 border-orange-400 shadow-sm">
                             <div className="flex items-start space-x-3">
-                              <span className="text-gray-600 text-xl">💬</span>
+                              <span className="text-orange-600 text-xl">⚠️</span>
                               <div className="flex-1">
-                                <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
-                                  {answer.feedback}
+                                <p className="text-sm font-bold text-orange-900 mb-2">피드백 형식 오류</p>
+                                <p className="text-xs text-orange-700 mb-2">
+                                  피드백 데이터 형식이 올바르지 않습니다. 백그라운드 평가가 진행 중이거나 오류가 발생했을 수 있습니다.
                                 </p>
+                                <details className="text-xs text-gray-600 mt-2">
+                                  <summary className="cursor-pointer hover:text-gray-800 font-medium">원본 데이터 보기</summary>
+                                  <pre className="mt-2 p-2 bg-white rounded border border-gray-200 overflow-x-auto text-xs">
+                                    {typeof answer.feedback === 'string' 
+                                      ? answer.feedback 
+                                      : JSON.stringify(answer.feedback, null, 2)}
+                                  </pre>
+                                </details>
                               </div>
                             </div>
                           </div>

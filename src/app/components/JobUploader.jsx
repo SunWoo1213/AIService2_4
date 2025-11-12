@@ -95,6 +95,7 @@ export default function JobUploader({ onAnalysisComplete }) {
       <div className="mb-4">
         <div className="flex space-x-4 mb-4">
           <button
+            type="button"
             onClick={() => setMode('text')}
             className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
               mode === 'text'
@@ -105,6 +106,7 @@ export default function JobUploader({ onAnalysisComplete }) {
             텍스트 입력
           </button>
           <button
+            type="button"
             onClick={() => setMode('pdf')}
             className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
               mode === 'pdf'

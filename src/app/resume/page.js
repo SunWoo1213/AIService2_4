@@ -105,6 +105,7 @@ export default function ResumeFeedbackPage() {
           <div className="mb-6 p-4 bg-yellow-100 border border-yellow-400 text-yellow-800 rounded-lg">
             <p className="font-medium">프로필을 먼저 설정하면 더 정확한 피드백을 받을 수 있습니다.</p>
             <button
+              type="button"
               onClick={() => router.push('/profile')}
               className="mt-2 text-sm underline hover:no-underline"
             >
@@ -143,6 +144,7 @@ export default function ResumeFeedbackPage() {
         {step === 2 && (
           <div>
             <button
+              type="button"
               onClick={() => setStep(1)}
               className="mb-4 text-primary-600 hover:text-primary-700 font-medium"
             >
@@ -155,6 +157,7 @@ export default function ResumeFeedbackPage() {
     </div>
   );
 }
+
 
 
 

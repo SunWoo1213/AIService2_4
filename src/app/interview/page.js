@@ -228,6 +228,7 @@ export default function InterviewPage() {
               
               <div className="space-y-3 mb-6">
                 <button
+                  type="button"
                   onClick={() => setSelectedTone('friendly')}
                   className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
                     selectedTone === 'friendly'
@@ -245,6 +246,7 @@ export default function InterviewPage() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setSelectedTone('professional')}
                   className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
                     selectedTone === 'professional'
@@ -262,6 +264,7 @@ export default function InterviewPage() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setSelectedTone('formal')}
                   className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
                     selectedTone === 'formal'

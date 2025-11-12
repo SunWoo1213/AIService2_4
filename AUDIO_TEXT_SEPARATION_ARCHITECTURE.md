@@ -539,3 +539,4 @@ const unsubscribe = onSnapshot(
 - 텍스트 분석 수정 시: `[분석용]` 주석 확인
 - LLM 프롬프트 수정 시: "텍스트만 평가" 원칙 유지
 
+
