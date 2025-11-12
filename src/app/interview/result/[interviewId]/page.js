@@ -63,14 +63,26 @@ export default function InterviewResultPage() {
       (docSnapshot) => {
         console.log('========================================');
         console.log('[결과 페이지] 📥 onSnapshot 콜백 실행');
+        console.log('[결과 페이지] - 시각:', new Date().toISOString());
         console.log('[결과 페이지] - doc.exists():', docSnapshot.exists());
         
         if (docSnapshot.exists()) {
           const data = docSnapshot.data();
           console.log('[결과 페이지] ✅ 데이터 조회 성공!');
           console.log('[결과 페이지] - 질문 개수:', data.questions?.length || 0);
-          console.log('[결과 페이지] - overallFeedback 존재:', !!data.overallFeedback);
+          console.log('[결과 페이지] - overallReview 존재:', !!data.overallReview);
+          console.log('[결과 페이지] - overallReview 타입:', typeof data.overallReview);
+          console.log('[결과 페이지] - overallFeedback 존재 (구버전):', !!data.overallFeedback);
           console.log('[결과 페이지] - 데이터 키:', Object.keys(data).join(', '));
+          
+          // ===== [진단] 각 질문의 aiFeedback 필드 확인 =====
+          if (data.questions && data.questions.length > 0) {
+            console.log('[결과 페이지] 📋 각 질문의 aiFeedback 상태:');
+            data.questions.forEach((q, idx) => {
+              console.log(`  - 질문 ${idx + 1} (${q.id}):`, 
+                q.aiFeedback ? `✅ 있음 (${typeof q.aiFeedback})` : '❌ 없음');
+            });
+          }
           
           setInterviewResult(data);
           setError(null);
@@ -197,17 +209,29 @@ export default function InterviewResultPage() {
           <h2 className="text-2xl font-bold text-gray-900 mb-4">질문별 답변</h2>
           
           {interviewResult.questions && interviewResult.questions.length > 0 ? (
-            interviewResult.questions.map((item, index) => (
-              <Card key={item.id || index}>
-                {/* 질문 */}
-                <div className="mb-4 pb-4 border-b border-gray-200">
-                  <span className="text-sm font-bold text-primary-600 mb-2 block">
-                    질문 {item.id || index + 1}
-                  </span>
-                  <p className="text-lg font-bold text-gray-900">
-                    {item.question}
-                  </p>
-                </div>
+            interviewResult.questions.map((item, index) => {
+              // ===== [진단] 각 질문 객체의 전체 구조 확인 =====
+              console.log('========================================');
+              console.log(`[결과 페이지] 질문 ${index + 1} 렌더링 데이터:`, item);
+              console.log('[결과 페이지] - item.id:', item.id);
+              console.log('[결과 페이지] - item.question:', item.question?.substring(0, 50) + '...');
+              console.log('[결과 페이지] - item.aiFeedback:', item.aiFeedback);
+              console.log('[결과 페이지] - item.feedback:', item.feedback);
+              console.log('[결과 페이지] - item.aiEvaluation:', item.aiEvaluation);
+              console.log('[결과 페이지] - 모든 키:', Object.keys(item).join(', '));
+              console.log('========================================');
+              
+              return (
+                <Card key={item.id || index}>
+                  {/* 질문 */}
+                  <div className="mb-4 pb-4 border-b border-gray-200">
+                    <span className="text-sm font-bold text-primary-600 mb-2 block">
+                      질문 {item.id || index + 1}
+                    </span>
+                    <p className="text-lg font-bold text-gray-900">
+                      {item.question}
+                    </p>
+                  </div>
 
                 {/* 답변 (음성 + 텍스트) */}
                 <div className="mb-4">
@@ -246,30 +270,47 @@ export default function InterviewResultPage() {
                     AI 코멘트
                   </h4>
                   
-                  {item.aiFeedback ? (
-                    <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
-                      <p className="text-gray-800 leading-relaxed">
-                        {item.aiFeedback}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-center">
-                      <div className="inline-block animate-pulse mb-2">
-                        <div className="text-2xl">🤔</div>
+                  {(() => {
+                    // ===== [수정] 다양한 필드 경로를 지원하는 견고한 매핑 로직 =====
+                    const feedbackText = 
+                      item.aiFeedback?.feedback ||  // { aiFeedback: { feedback: "..." } }
+                      item.aiFeedback?.content ||   // { aiFeedback: { content: "..." } }
+                      (typeof item.aiFeedback === 'string' ? item.aiFeedback : null) || // { aiFeedback: "..." }
+                      item.feedback ||               // { feedback: "..." }
+                      item.aiEvaluation?.feedback || // { aiEvaluation: { feedback: "..." } }
+                      null;
+                    
+                    console.log(`[결과 페이지] 질문 ${index + 1} 최종 feedbackText:`, feedbackText);
+                    
+                    // "피드백 생성 중..."은 로딩으로 간주
+                    const isLoading = !feedbackText || feedbackText === '피드백 생성 중...';
+                    
+                    return isLoading ? (
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-center">
+                        <div className="inline-block animate-pulse mb-2">
+                          <div className="text-2xl">🤔</div>
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          AI가 이 답변을 분석하고 있습니다...
+                        </p>
+                        <div className="flex justify-center items-center gap-1 mt-2">
+                          <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                          <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                          <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                        </div>
                       </div>
-                      <p className="text-sm text-gray-600">
-                        AI가 이 답변을 분석하고 있습니다...
-                      </p>
-                      <div className="flex justify-center items-center gap-1 mt-2">
-                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    ) : (
+                      <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
+                        <p className="text-gray-800 leading-relaxed whitespace-pre-line">
+                          {feedbackText}
+                        </p>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               </Card>
-            ))
+              );
+            })
           ) : (
             <Card>
               <p className="text-center text-gray-600 py-8">

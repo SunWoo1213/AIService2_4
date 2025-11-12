@@ -167,13 +167,21 @@ ${answersText}
         item => item.id === questionId
       );
       
-      console.log(`[종합 피드백 API] 질문 ${index + 1} (${questionId}): aiFeedback 병합`, 
-        feedbackItem ? '✅' : '⚠️ 피드백 없음');
+      // ===== [진단] 피드백 데이터 상세 로깅 =====
+      console.log(`[종합 피드백 API] ===== 질문 ${index + 1} (ID: ${questionId}) =====`);
+      console.log('[종합 피드백 API] - feedbackItem 존재:', !!feedbackItem);
+      console.log('[종합 피드백 API] - feedbackItem 전체:', feedbackItem);
+      console.log('[종합 피드백 API] - feedbackItem.feedback:', feedbackItem?.feedback);
+      console.log('[종합 피드백 API] - feedbackItem.id:', feedbackItem?.id);
       
-      // 기존 질문 데이터에 aiFeedback 필드 추가
+      // 기존 질문 데이터에 aiFeedback 필드 추가 (문자열로 직접 저장)
+      const aiFeedbackText = feedbackItem?.feedback || null;
+      
+      console.log('[종합 피드백 API] - 저장될 aiFeedback:', aiFeedbackText ? '✅ ' + aiFeedbackText.substring(0, 50) + '...' : '⚠️ null');
+      
       return {
         ...question,
-        aiFeedback: feedbackItem?.feedback || '피드백 생성 중...'
+        aiFeedback: aiFeedbackText  // 문자열로 직접 저장 (null이면 프론트엔드에서 로딩 표시)
       };
     });
     
