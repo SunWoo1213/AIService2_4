@@ -14,7 +14,7 @@ import Loading from '../components/ui/Loading';
 export default function InterviewPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [step, setStep] = useState('select'); // 'select', 'configure', 'interview', 'complete'
+  const [step, setStep] = useState('select'); // 'select', 'configure', 'interview'
   const [pastFeedbacks, setPastFeedbacks] = useState([]);
   const [selectedFeedback, setSelectedFeedback] = useState(null);
   const [selectedTone, setSelectedTone] = useState(null); // 사용자가 선택한 말투
@@ -111,22 +111,14 @@ export default function InterviewPage() {
     }
   };
 
-  const handleInterviewComplete = async (results) => {
+  const handleInterviewComplete = async (interviewId) => {
     try {
-      // Firestore에 결과 저장
-      await addDoc(collection(db, 'feedbacks'), {
-        userId: user.uid,
-        type: 'interview',
-        jobKeywords: selectedFeedback.jobKeywords,
-        resumeText: selectedFeedback.resumeText,
-        interviewResults: results,
-        createdAt: new Date().toISOString()
-      });
-
-      setStep('complete');
+      // interviewId를 받아서 결과 페이지로 리다이렉트
+      console.log('면접 완료, interviewId:', interviewId);
+      router.push(`/interview/result/${interviewId}`);
     } catch (error) {
-      console.error('Error saving interview results:', error);
-      alert('결과 저장 중 오류가 발생했습니다.');
+      console.error('Error redirecting to results:', error);
+      alert('결과 페이지로 이동 중 오류가 발생했습니다.');
     }
   };
 
@@ -320,30 +312,6 @@ export default function InterviewPage() {
           />
         )}
 
-        {step === 'complete' && (
-          <Card className="text-center py-12">
-            <div className="text-6xl mb-4">🎉</div>
-            <h2 className="text-3xl font-bold text-gray-800 mb-4">
-              모의 면접 완료!
-            </h2>
-            <p className="text-gray-600 mb-8">
-              수고하셨습니다. 결과는 히스토리에서 확인하실 수 있습니다.
-            </p>
-            <div className="flex justify-center space-x-4">
-              <Button onClick={() => router.push('/history')}>
-                결과 보러 가기
-              </Button>
-              <Button variant="secondary" onClick={() => {
-                setStep('select');
-                setSelectedFeedback(null);
-                setSelectedTone(null);
-                setQuestions(null);
-              }}>
-                다시 연습하기
-              </Button>
-            </div>
-          </Card>
-        )}
       </main>
     </div>
   );

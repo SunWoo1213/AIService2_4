@@ -12,7 +12,6 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
   const [questionCount, setQuestionCount] = useState(0);
   const [timeLeft, setTimeLeft] = useState(initialQuestion?.time_limit || 60);
   const [isRecording, setIsRecording] = useState(false);
-  const [results, setResults] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [browserSupported, setBrowserSupported] = useState(true);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
@@ -500,18 +499,6 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
         // 에러가 발생해도 사용자 플로우에는 영향 없음
       });
 
-      // 로컬 상태에는 임시로 저장 (피드백은 나중에 업데이트될 수 있음)
-      const newResult = {
-        question: currentQuestion.question,
-        userAnswer: finalAnswer,
-        audioURL: audioURL,
-        contentAdvice: '평가 중...', // 백그라운드에서 평가 중
-        contentScore: null,
-      };
-
-      const updatedResults = [...results, newResult];
-      setResults(updatedResults);
-
       // 다음 질문 요청 또는 면접 완료
       const nextQuestionCount = questionCount + 1;
       
@@ -632,7 +619,7 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
         // 면접 완료
         console.log('=== 면접 완료 ===');
         if (onComplete) {
-          onComplete(updatedResults);
+          onComplete(interviewId);
         }
       }
     } catch (error) {
@@ -790,67 +777,6 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
         )}
       </Card>
 
-      {/* Previous results - 간소화 */}
-      {results.length > 0 && (
-        <Card>
-          <h3 className="text-lg font-bold text-gray-800 mb-4">이전 답변 결과</h3>
-          <div className="space-y-4">
-            {results.map((result, index) => (
-              <div key={index} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <div className="mb-3">
-                  <span className="text-sm font-medium text-gray-700">질문 {index + 1}</span>
-                </div>
-                
-                <div className="mb-3">
-                  <p className="text-xs font-semibold text-gray-500 mb-1">질문</p>
-                  <p className="text-sm text-gray-700 bg-white p-2 rounded">{result.question}</p>
-                </div>
-
-                {/* 답변 텍스트 */}
-                {result.userAnswer && (
-                  <div className="mb-3">
-                    <p className="text-xs font-semibold text-gray-500 mb-1">내 답변</p>
-                    <p className="text-sm text-gray-700 bg-gray-100 p-2 rounded">{result.userAnswer}</p>
-                  </div>
-                )}
-
-                {/* 오디오 플레이어 */}
-                {result.audioURL && (
-                  <div className="mb-3">
-                    <p className="text-xs font-semibold text-gray-500 mb-2">🎧 녹음 듣기</p>
-                    <audio 
-                      controls 
-                      className="w-full"
-                      style={{ height: '40px' }}
-                    >
-                      <source src={result.audioURL} type="audio/webm" />
-                      <source src={result.audioURL} type="audio/mp4" />
-                      브라우저가 오디오 재생을 지원하지 않습니다.
-                    </audio>
-                  </div>
-                )}
-
-                {/* 내용 피드백만 표시 */}
-                {result.contentAdvice && (
-                  <div className="mb-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs font-semibold text-gray-500">💡 피드백</p>
-                      {result.contentScore && (
-                        <span className="text-xs font-bold text-primary-600">
-                          점수: {result.contentScore}/10
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-700 bg-blue-50 p-3 rounded border border-blue-200">
-                      {result.contentAdvice}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
     </div>
   );
 }
