@@ -417,12 +417,13 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
     setIsProcessing(true);
   };
 
-  // ===== [분석용] 백그라운드에서 답변 평가 및 저장 (fire-and-forget) =====
+  // ===== [세트 기반] 백그라운드에서 답변 저장 (개별 피드백 제거) =====
+  // 변경 사항: 개별 피드백 생성 제거, 답변 데이터만 저장
   // 이 함수의 목적:
-  // 1. audioBlob을 Whisper API에 보내 정확한 transcript 추출
-  // 2. transcript(텍스트)를 LLM에 보내 내용 분석 및 피드백 생성
-  // 3. 평가 결과와 audioURL(재생용)을 Firestore에 저장
-  const evaluateAnswerInBackground = async (
+  // 1. audioBlob을 Whisper API에 보내 정확한 transcript 추출 (STT용)
+  // 2. 답변 데이터(transcript, audioURL)를 Firestore에 저장
+  // 3. 개별 피드백은 생성하지 않음 (5개 모두 완료 후 종합 피드백 생성)
+  const saveAnswerInBackground = async (
     audioBlob,
     transcript,
     question,
@@ -467,56 +468,16 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
       
       console.log('[백그라운드 평가] ✅ 입력 데이터 검증 통과');
       
-      // FormData로 오디오와 텍스트를 API에 전송
-      // - audio: Whisper STT로 더 정확한 transcript를 얻기 위함 (선택적)
-      // - transcript: Browser SpeechRecognition 결과 (폴백용)
-      // - question: 질문 내용 (평가 기준으로 사용)
-      console.log('[백그라운드 평가] 📦 FormData 생성 중...');
-      const formData = new FormData();
-      formData.append('audio', audioBlob, 'interview_answer.webm');
-      formData.append('question', question);
-      formData.append('transcript', transcript);
+      // ===== [세트 기반] 개별 피드백 생성 제거 =====
+      // 변경 사항: LLM API 호출 제거, 답변 데이터만 저장
+      // Whisper STT는 선택적으로 사용 가능 (더 정확한 transcript)
+      // 하지만 여기서는 Browser STT 결과를 그대로 사용
       
-      if (duration) {
-        formData.append('actualDuration', duration.toString());
-      }
-      console.log('[백그라운드 평가] ✅ FormData 생성 완료');
-
-      // ===== [진단 1단계] LLM 호출 직전 로깅 =====
-      console.log('[백그라운드 평가] 🚀 LLM API 호출 시작...');
-      console.log('[백그라운드 평가] - API 엔드포인트: /api/interview/evaluate-delivery');
-      console.log('[백그라운드 평가] - 호출 시각:', new Date().toISOString());
+      console.log('[답변 저장] 💾 개별 피드백 없이 답변 데이터만 저장합니다.');
+      console.log('[답변 저장] 💡 5개 질문 완료 후 종합 피드백이 생성됩니다.');
       
-      const response = await fetch('/api/interview/evaluate-delivery', {
-        method: 'POST',
-        body: formData,
-      });
-
-      // ===== [진단 1단계] LLM 호출 직후 로깅 =====
-      console.log('[백그라운드 평가] 📨 LLM API 응답 수신');
-      console.log('[백그라운드 평가] - 응답 상태:', response.status, response.statusText);
-      console.log('[백그라운드 평가] - 응답 시각:', new Date().toISOString());
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[백그라운드 평가] ❌ API 응답 실패!');
-        console.error('[백그라운드 평가] - 상태 코드:', response.status);
-        console.error('[백그라운드 평가] - 에러 메시지:', errorText);
-        throw new Error(`답변 평가 API 실패 (${response.status}): ${errorText}`);
-      }
-
-      const analysisResult = await response.json();
-      
-      // ===== [진단 1단계] LLM 응답 내용 로깅 =====
-      console.log('[백그라운드 평가] ✅ LLM 피드백 생성 완료!');
-      console.log('[백그라운드 평가] 📄 피드백 내용:', {
-        hasStrengths: !!analysisResult.strengths,
-        hasWeaknesses: !!analysisResult.weaknesses,
-        hasImprovements: !!analysisResult.improvements,
-        hasSummary: !!analysisResult.summary,
-        strengthsPreview: analysisResult.strengths ? analysisResult.strengths.substring(0, 50) + '...' : '(없음)',
-        weaknessesPreview: analysisResult.weaknesses ? analysisResult.weaknesses.substring(0, 50) + '...' : '(없음)'
-      });
+      // analysisResult 대신 null 사용 (피드백 없음)
+      const analysisResult = null;
 
       // ===== [저장] Firestore에 결과 저장 =====
       // 저장되는 데이터:
@@ -533,14 +494,15 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
         throw new Error(errorMsg);
       }
       
+      // ===== [세트 기반] feedback 필드는 null (종합 피드백만 생성) =====
       const answerData = {
         userId: userId,
         interviewId: interviewId,
         questionId: `q${questionCount + 1}`,
         question: question,
-        transcript: transcript, // [분석용] 실제 답변 내용 (AI 평가 대상)
+        transcript: transcript, // [분석용] 실제 답변 내용 (종합 평가에 사용)
         audioURL: audioURL, // [재생용] 오디오 파일 URL (다시 듣기 전용)
-        feedback: JSON.stringify(analysisResult), // [결과] AI 평가 피드백
+        feedback: null, // [세트 기반] 개별 피드백 없음
         duration: duration,
         timestamp: Timestamp.now(),
         createdAt: new Date().toISOString()
@@ -742,7 +704,7 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
       // 하지만 에러가 발생해도 사용자 플로우에 영향을 주지 않도록 .catch()를 추가합니다.
       console.log('[메인 플로우] 백그라운드 평가 함수 호출 시작');
       
-      evaluateAnswerInBackground(
+      saveAnswerInBackground(
         audioBlob,
         finalAnswer,
         currentQuestion.question,
@@ -881,8 +843,47 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
           }, 500);
         }
       } else {
-        // 면접 완료
+        // ===== [면접 완료] 모든 질문 종료 + 종합 피드백 생성 =====
+        console.log('========================================');
         console.log('=== 면접 완료 ===');
+        console.log('총', MAX_QUESTIONS, '개의 질문을 모두 완료했습니다.');
+        console.log('========================================');
+        
+        // ===== [세트 기반] 종합 피드백 생성 시작 =====
+        console.log('[종합 피드백] 🚀 5개 답변 종합 평가 시작');
+        console.log('[종합 피드백] - interviewId:', interviewId);
+        console.log('[종합 피드백] - userId:', userId);
+        
+        // 종합 피드백 생성을 비동기로 처리 (백그라운드)
+        fetch('/api/interview/generate-overall-feedback', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            interviewId: interviewId,
+            userId: userId
+          }),
+        }).then(response => {
+          if (!response.ok) {
+            throw new Error(`종합 피드백 생성 실패: ${response.status}`);
+          }
+          return response.json();
+        }).then(feedbackResult => {
+          console.log('========================================');
+          console.log('[종합 피드백] ✅✅✅ 종합 피드백 생성 완료! ✅✅✅');
+          console.log('[종합 피드백] - 피드백 ID:', feedbackResult.feedbackId || '(저장됨)');
+          console.log('[종합 피드백] 💡 결과 페이지에서 종합 피드백을 확인할 수 있습니다!');
+          console.log('========================================');
+        }).catch(error => {
+          console.error('========================================');
+          console.error('[종합 피드백] ❌ 종합 피드백 생성 실패');
+          console.error('[종합 피드백] - 에러:', error.message);
+          console.error('[종합 피드백] 💡 개별 답변 내역은 저장되어 있습니다.');
+          console.error('========================================');
+        });
+        
+        // 종합 피드백 생성과 관계없이 결과 페이지로 즉시 이동
         if (onComplete) {
           onComplete(interviewId);
         }

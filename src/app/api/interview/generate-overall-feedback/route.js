@@ -1,0 +1,224 @@
+import { NextResponse } from 'next/server';
+import { db } from '@/firebase/config';
+import { collection, query, where, getDocs, doc, updateDoc, Timestamp } from 'firebase/firestore';
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+export async function POST(request) {
+  console.log('========================================');
+  console.log('[종합 피드백 API] POST 요청 수신');
+  console.log('[종합 피드백 API] 시각:', new Date().toISOString());
+  console.log('========================================');
+  
+  try {
+    // 요청 데이터 파싱
+    const { interviewId, userId } = await request.json();
+    
+    console.log('[종합 피드백 API] 📋 요청 데이터:');
+    console.log('[종합 피드백 API] - interviewId:', interviewId);
+    console.log('[종합 피드백 API] - userId:', userId);
+    
+    // 필수 파라미터 검증
+    if (!interviewId || !userId) {
+      console.error('[종합 피드백 API] ❌ 필수 파라미터 누락');
+      return NextResponse.json(
+        { error: 'interviewId와 userId는 필수입니다.' },
+        { status: 400 }
+      );
+    }
+    
+    // ===== [1단계] Firestore에서 해당 세트의 모든 답변 조회 =====
+    console.log('[종합 피드백 API] 🔍 1단계: Firestore에서 답변 조회 중...');
+    console.log('[종합 피드백 API] - 컬렉션: interview_answers');
+    console.log('[종합 피드백 API] - 조건: userId == ' + userId);
+    console.log('[종합 피드백 API] - 조건: interviewId == ' + interviewId);
+    
+    const answersRef = collection(db, 'interview_answers');
+    const q = query(
+      answersRef,
+      where('userId', '==', userId),
+      where('interviewId', '==', interviewId)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    
+    console.log('[종합 피드백 API] 📊 조회 결과:', querySnapshot.size, '개의 답변');
+    
+    if (querySnapshot.empty) {
+      console.warn('[종합 피드백 API] ⚠️ 답변이 없습니다.');
+      return NextResponse.json(
+        { error: '답변 데이터를 찾을 수 없습니다.' },
+        { status: 404 }
+      );
+    }
+    
+    // 답변 데이터 배열로 변환
+    const answers = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      answers.push({
+        questionId: data.questionId,
+        question: data.question,
+        transcript: data.transcript,
+        duration: data.duration,
+        timestamp: data.timestamp
+      });
+    });
+    
+    // questionId 순서대로 정렬 (q1, q2, q3, q4, q5)
+    answers.sort((a, b) => {
+      const numA = parseInt(a.questionId.replace('q', ''));
+      const numB = parseInt(b.questionId.replace('q', ''));
+      return numA - numB;
+    });
+    
+    console.log('[종합 피드백 API] ✅ 답변 정렬 완료:', answers.map(a => a.questionId).join(', '));
+    
+    // ===== [2단계] LLM 프롬프트 구성 =====
+    console.log('[종합 피드백 API] 📝 2단계: LLM 프롬프트 구성 중...');
+    
+    // 답변 내용을 텍스트로 구성
+    const answersText = answers.map((answer, index) => {
+      return `
+**질문 ${index + 1}**: ${answer.question}
+**답변**: ${answer.transcript}
+**답변 시간**: ${answer.duration}초
+`;
+    }).join('\n---\n');
+    
+    const systemPrompt = `당신은 채용 전문가이자 시니어 면접관입니다. 
+지원자의 전체 면접 답변(5개 질문)을 종합적으로 분석하여 깊이 있는 피드백을 제공하세요.
+
+평가 기준:
+1. **전체적인 일관성**: 답변들이 일관된 메시지와 스토리를 전달하는가?
+2. **강점 (Strengths)**: 전반적으로 돋보이는 점, 잘한 점
+3. **약점 (Weaknesses)**: 전반적으로 부족한 점, 개선이 필요한 점
+4. **개선 방향 (Improvements)**: 구체적이고 실행 가능한 조언
+5. **종합 평가 (Summary)**: 전체적인 인상과 최종 의견
+
+반드시 JSON 형식으로 응답하세요:
+{
+  "overallConsistency": "답변들의 일관성 평가",
+  "strengths": "전체 면접에서 돋보인 강점",
+  "weaknesses": "전체 면접에서 보완이 필요한 점",
+  "improvements": "구체적인 개선 방향 및 조언",
+  "summary": "종합 평가 및 최종 의견"
+}`;
+    
+    const userPrompt = `다음은 지원자의 전체 면접 답변 내역(1번~5번)입니다. 
+전체적인 일관성, 강점, 약점을 분석하여 종합 피드백을 제공해주세요.
+
+${answersText}
+
+위 답변들을 종합적으로 분석하여 깊이 있는 피드백을 JSON 형식으로 제공해주세요.`;
+    
+    console.log('[종합 피드백 API] ✅ 프롬프트 구성 완료');
+    console.log('[종합 피드백 API] - 답변 개수:', answers.length);
+    console.log('[종합 피드백 API] - 프롬프트 길이:', userPrompt.length, 'bytes');
+    
+    // ===== [3단계] LLM API 호출 =====
+    console.log('[종합 피드백 API] 🤖 3단계: LLM API 호출 중...');
+    console.log('[종합 피드백 API] - 모델: gpt-4o');
+    console.log('[종합 피드백 API] - 호출 시각:', new Date().toISOString());
+    
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 2000,
+      response_format: { type: "json_object" }
+    });
+    
+    const feedbackText = completion.choices[0].message.content;
+    console.log('[종합 피드백 API] ✅ LLM 응답 수신');
+    console.log('[종합 피드백 API] - 응답 길이:', feedbackText.length, 'bytes');
+    
+    // JSON 파싱
+    const feedbackData = JSON.parse(feedbackText);
+    
+    console.log('[종합 피드백 API] ✅ JSON 파싱 성공');
+    console.log('[종합 피드백 API] - 필드:', Object.keys(feedbackData).join(', '));
+    
+    // ===== [4단계] feedbacks 컬렉션의 부모 문서에 저장 =====
+    console.log('[종합 피드백 API] 💾 4단계: Firestore에 저장 중...');
+    console.log('[종합 피드백 API] - 컬렉션: feedbacks');
+    console.log('[종합 피드백 API] - 필드: overallFeedback');
+    
+    // feedbacks 컬렉션에서 해당 interviewId를 가진 문서 찾기
+    const feedbacksRef = collection(db, 'feedbacks');
+    const feedbackQuery = query(
+      feedbacksRef,
+      where('interviewId', '==', interviewId),
+      where('userId', '==', userId),
+      where('type', '==', 'interview')
+    );
+    
+    const feedbackSnapshot = await getDocs(feedbackQuery);
+    
+    if (feedbackSnapshot.empty) {
+      console.warn('[종합 피드백 API] ⚠️ feedbacks 문서를 찾을 수 없습니다.');
+      console.warn('[종합 피드백 API] 💡 interview/page.js의 handleInterviewComplete에서 생성되어야 합니다.');
+      return NextResponse.json(
+        { error: 'feedbacks 문서를 찾을 수 없습니다.' },
+        { status: 404 }
+      );
+    }
+    
+    // 첫 번째 문서 업데이트 (동일한 interviewId는 하나여야 함)
+    const feedbackDoc = feedbackSnapshot.docs[0];
+    const feedbackDocRef = doc(db, 'feedbacks', feedbackDoc.id);
+    
+    await updateDoc(feedbackDocRef, {
+      overallFeedback: feedbackData,
+      feedbackGeneratedAt: Timestamp.now(),
+      updatedAt: new Date().toISOString()
+    });
+    
+    console.log('========================================');
+    console.log('[종합 피드백 API] ✅✅✅ 성공! ✅✅✅');
+    console.log('[종합 피드백 API] - feedbackId:', feedbackDoc.id);
+    console.log('[종합 피드백 API] - 완료 시각:', new Date().toISOString());
+    console.log('========================================');
+    
+    return NextResponse.json({
+      success: true,
+      feedbackId: feedbackDoc.id,
+      message: '종합 피드백이 성공적으로 생성되었습니다.'
+    });
+    
+  } catch (error) {
+    console.error('========================================');
+    console.error('[종합 피드백 API] ❌❌❌ 에러 발생! ❌❌❌');
+    console.error('[종합 피드백 API] - 에러:', error);
+    console.error('[종합 피드백 API] - 에러 메시지:', error.message);
+    console.error('[종합 피드백 API] - 에러 스택:', error.stack);
+    
+    // 에러 원인 분석
+    if (error.message.includes('API key')) {
+      console.error('[종합 피드백 API] 🔍 원인: OpenAI API 키 문제');
+      console.error('[종합 피드백 API] 💡 해결방법: .env 파일에서 OPENAI_API_KEY 확인');
+    } else if (error.message.includes('permission')) {
+      console.error('[종합 피드백 API] 🔍 원인: Firestore 권한 문제');
+      console.error('[종합 피드백 API] 💡 해결방법: Firestore Rules에서 write 권한 확인');
+    } else if (error.message.includes('JSON')) {
+      console.error('[종합 피드백 API] 🔍 원인: JSON 파싱 실패');
+      console.error('[종합 피드백 API] 💡 해결방법: LLM 응답 형식 확인');
+    }
+    console.error('========================================');
+    
+    return NextResponse.json(
+      { 
+        error: '종합 피드백 생성 중 오류가 발생했습니다.',
+        details: error.message
+      },
+      { status: 500 }
+    );
+  }
+}
+

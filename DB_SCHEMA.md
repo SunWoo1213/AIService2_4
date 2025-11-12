@@ -101,9 +101,9 @@
   // 오디오 파일
   audioURL: string | null,     // Firebase Storage 다운로드 URL
   
-  // 피드백
-  feedback: string,            // AI 피드백 내용
-  score: number | null,        // 점수 (0-10)
+  // ===== [세트 기반] 피드백 변경 =====
+  feedback: null,              // 개별 피드백 제거 (항상 null)
+  // 💡 종합 피드백은 feedbacks 컬렉션의 overallFeedback 필드에 저장됩니다.
   
   // 메타데이터
   duration: number,            // 녹음 시간 (초)
@@ -148,32 +148,61 @@ gs://[your-bucket]/recordings/
   │   │   └── ...
 ```
 
-## feedbacks 컬렉션 확장
+## feedbacks 컬렉션 (면접 세션 메타데이터 및 종합 피드백)
 
-기존 feedbacks 컬렉션에 새로운 필드를 추가합니다.
+**[세트 기반]** 각 면접 세션의 메타데이터와 종합 피드백을 저장합니다.
 
-### 추가 필드
+### 필드 구조
 
 ```javascript
 {
-  // ... 기존 필드들 ...
+  // 기본 정보
+  userId: string,              // 사용자 ID
+  interviewId: string,         // 면접 세션 ID (고유값, 예: interview_1699999999999)
+  type: 'interview',           // 피드백 타입 (면접)
   
-  // 음성 관련
-  transcription_id: string | null,  // voice_transcriptions의 참조 ID
-  input_mode: string,              // 'text' 또는 'voice'
+  // 면접 설정
+  resumeText: string,          // 이력서 내용
+  jobKeywords: object,         // 직무 키워드
+  tonePreference: string,      // 선호 톤 ('친근한', '전문적인', '격식있는')
   
-  // 구조화된 피드백 (새로운 형식)
-  structured_feedback: {
-    one_sentence_summary: string,
-    actionable_feedback: [
-      { id: number, advice: string }
-    ],
-    full_analysis: string
-  } | null,
+  // ===== [세트 기반] 종합 피드백 =====
+  overallFeedback: {
+    overallConsistency: string,  // 전체 일관성 평가
+    strengths: string,           // 전체 면접에서의 강점
+    weaknesses: string,          // 전체 면접에서의 약점
+    improvements: string,        // 구체적 개선 방향
+    summary: string              // 최종 종합 평가
+  } | null,                       // 5개 질문 완료 후 생성
   
-  // 사용자 피드백 평가
-  user_rating: string | null,      // 'good', 'bad', null
-  rating_reason: string | null,    // 'abstract', 'needs_examples', 'needs_refinement'
+  // 타임스탬프
+  createdAt: string,           // 면접 시작 시각 (ISO 문자열)
+  timestamp: timestamp,        // Firestore 타임스탬프
+  feedbackGeneratedAt: timestamp | null,  // 종합 피드백 생성 시각
+  updatedAt: string | null     // 마지막 업데이트 시각
+}
+```
+
+### 종합 피드백 생성 흐름
+
+1. **면접 시작**: `handleInterviewComplete` 함수에서 feedbacks 컬렉션에 세션 메타데이터 저장 (overallFeedback: null)
+2. **5번째 질문 완료**: `generate-overall-feedback` API 호출
+3. **API 처리**:
+   - interview_answers 컬렉션에서 5개 답변 조회
+   - LLM으로 종합 분석
+   - feedbacks 문서의 overallFeedback 필드 업데이트
+4. **결과 페이지**: onSnapshot으로 실시간 업데이트 표시
+
+### 기존 필드 (이력서 피드백용)
+
+```javascript
+{
+  // 이력서 피드백 관련 필드 (기존 유지)
+  transcription_id: string | null,
+  input_mode: string,
+  structured_feedback: object | null,
+  user_rating: string | null,
+  rating_reason: string | null,
   rating_timestamp: timestamp | null,
 }
 ```

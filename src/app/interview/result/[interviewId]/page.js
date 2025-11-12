@@ -19,6 +19,10 @@ export default function InterviewResultPage() {
   const [answers, setAnswers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // ===== [세트 기반] 종합 피드백 State 추가 =====
+  const [overallFeedback, setOverallFeedback] = useState(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(true);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -208,10 +212,58 @@ export default function InterviewResultPage() {
         }
       );
 
+      // ===== [세트 기반] feedbacks 컬렉션에서 종합 피드백 조회 =====
+      console.log('[종합 피드백] 📡 feedbacks 컬렉션 조회 시작');
+      console.log('[종합 피드백] - 컬렉션: feedbacks');
+      console.log('[종합 피드백] - 조건: userId == ' + user.uid);
+      console.log('[종합 피드백] - 조건: interviewId == ' + interviewId);
+      
+      const feedbacksRef = collection(db, 'feedbacks');
+      const feedbackQuery = query(
+        feedbacksRef,
+        where('userId', '==', user.uid),
+        where('interviewId', '==', interviewId),
+        where('type', '==', 'interview')
+      );
+      
+      const unsubscribeFeedback = onSnapshot(
+        feedbackQuery,
+        (feedbackSnapshot) => {
+          console.log('[종합 피드백] 📥 feedbacks 스냅샷 수신');
+          console.log('[종합 피드백] - 문서 개수:', feedbackSnapshot.size);
+          
+          if (!feedbackSnapshot.empty) {
+            const feedbackDoc = feedbackSnapshot.docs[0];
+            const feedbackData = feedbackDoc.data();
+            
+            console.log('[종합 피드백] ✅ 종합 피드백 데이터 발견!');
+            console.log('[종합 피드백] - 문서 ID:', feedbackDoc.id);
+            console.log('[종합 피드백] - overallFeedback 필드 존재:', !!feedbackData.overallFeedback);
+            
+            if (feedbackData.overallFeedback) {
+              console.log('[종합 피드백] 🎉 종합 피드백 로드 완료!');
+              setOverallFeedback(feedbackData.overallFeedback);
+            } else {
+              console.log('[종합 피드백] ⏳ 종합 피드백 생성 대기 중...');
+              setOverallFeedback(null);
+            }
+          } else {
+            console.warn('[종합 피드백] ⚠️ feedbacks 문서를 찾을 수 없습니다.');
+          }
+          
+          setFeedbackLoading(false);
+        },
+        (feedbackError) => {
+          console.error('[종합 피드백] ❌ feedbacks 조회 에러:', feedbackError);
+          setFeedbackLoading(false);
+        }
+      );
+      
       // 컴포넌트 언마운트 시 구독 해제
       return () => {
         console.log('[결과 페이지] 🔌 onSnapshot 구독 해제');
         unsubscribe();
+        unsubscribeFeedback();
       };
     } catch (queryError) {
       // Query 생성 중 에러 (인덱스 관련 에러가 여기서 발생할 수 있음)
@@ -284,28 +336,118 @@ export default function InterviewResultPage() {
           </Card>
         ) : (
           <div className="space-y-6">
-            {/* 진행률 표시 */}
+            {/* ===== [세트 기반] 종합 피드백 섹션 ===== */}
+            <Card className="bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-200">
+              <div className="flex items-center space-x-3 mb-4">
+                <span className="text-3xl">🎯</span>
+                <h2 className="text-2xl font-bold text-gray-900">종합 피드백</h2>
+              </div>
+              
+              {feedbackLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-center">
+                    <div className="inline-block w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <p className="text-gray-600">종합 피드백을 불러오는 중...</p>
+                  </div>
+                </div>
+              ) : overallFeedback ? (
+                <div className="space-y-6">
+                  {/* 일관성 평가 */}
+                  {overallFeedback.overallConsistency && (
+                    <div className="bg-white rounded-lg p-6 shadow-sm">
+                      <h3 className="text-lg font-bold text-gray-900 mb-3 flex items-center">
+                        <span className="text-xl mr-2">🔄</span>
+                        전체 일관성
+                      </h3>
+                      <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                        {overallFeedback.overallConsistency}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* 강점 */}
+                  {overallFeedback.strengths && (
+                    <div className="bg-white rounded-lg p-6 shadow-sm">
+                      <h3 className="text-lg font-bold text-green-700 mb-3 flex items-center">
+                        <span className="text-xl mr-2">✅</span>
+                        전체 강점
+                      </h3>
+                      <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                        {overallFeedback.strengths}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* 약점 */}
+                  {overallFeedback.weaknesses && (
+                    <div className="bg-white rounded-lg p-6 shadow-sm">
+                      <h3 className="text-lg font-bold text-red-700 mb-3 flex items-center">
+                        <span className="text-xl mr-2">⚠️</span>
+                        개선 필요 사항
+                      </h3>
+                      <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                        {overallFeedback.weaknesses}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* 개선 방향 */}
+                  {overallFeedback.improvements && (
+                    <div className="bg-white rounded-lg p-6 shadow-sm">
+                      <h3 className="text-lg font-bold text-blue-700 mb-3 flex items-center">
+                        <span className="text-xl mr-2">💡</span>
+                        구체적 개선 방향
+                      </h3>
+                      <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                        {overallFeedback.improvements}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* 종합 평가 */}
+                  {overallFeedback.summary && (
+                    <div className="bg-white rounded-lg p-6 shadow-sm border-2 border-indigo-300">
+                      <h3 className="text-lg font-bold text-indigo-700 mb-3 flex items-center">
+                        <span className="text-xl mr-2">📊</span>
+                        최종 종합 평가
+                      </h3>
+                      <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                        {overallFeedback.summary}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-center">
+                    <div className="inline-block w-16 h-16 mb-4">
+                      <div className="w-full h-full border-4 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-900 mb-2">종합 피드백 생성 중...</h3>
+                    <p className="text-gray-600 text-sm">
+                      AI가 5개의 답변을 종합 분석하고 있습니다.
+                    </p>
+                    <p className="text-gray-500 text-xs mt-2">
+                      최대 1-2분 소요될 수 있습니다. 잠시만 기다려 주세요.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </Card>
+            
+            {/* 개별 답변 섹션 구분선 */}
+            <div className="border-t-4 border-gray-300 pt-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">개별 답변 내역</h2>
+            </div>
+            
+            {/* 진행률 표시 (개별 답변용 - 세트 기반에서는 불필요, 제거 가능) */}
             <Card>
               <div className="flex items-center justify-between">
                 <div className="flex-1">
-                  <h3 className="text-lg font-bold text-gray-800 mb-2">면접 분석 현황</h3>
+                  <h3 className="text-lg font-bold text-gray-800 mb-2">답변 기록</h3>
                   <p className="text-sm text-gray-600 mb-3">
                     총 {answers.length}개의 질문에 답변하셨습니다.
                   </p>
-                  <div className="flex items-center space-x-4">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                      <span className="text-sm text-gray-700">
-                        분석 완료: <strong>{answers.filter(a => a.feedback && a.feedback !== '평가 중...').length}개</strong>
-                      </span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-3 h-3 rounded-full bg-yellow-500 animate-pulse"></div>
-                      <span className="text-sm text-gray-700">
-                        분석 중: <strong>{answers.filter(a => !a.feedback || a.feedback === '평가 중...').length}개</strong>
-                      </span>
-                    </div>
-                  </div>
                 </div>
               </div>
             </Card>
