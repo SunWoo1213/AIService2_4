@@ -240,17 +240,20 @@ export default function InterviewResultPage() {
         <div className="space-y-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">질문별 답변</h2>
           
-          {interviewSession.questions && interviewSession.questions.length > 0 ? (
-            interviewSession.questions.map((item, index) => {
-              // ===== [5대 컬렉션] evaluation에서 해당 질문의 피드백 찾기 =====
-              const questionEval = evaluation?.questionEvaluations?.find(
-                qe => qe.qId === item.qId
+          {evaluation?.questionEvaluations && evaluation.questionEvaluations.length > 0 ? (
+            // ===== [통합 구조] evaluation에 모든 데이터가 있으므로 이것만 사용 =====
+            evaluation.questionEvaluations.map((item, index) => {
+              // interview_sessions에서 audioUrl 보완 (선택사항)
+              const sessionQuestion = interviewSession?.questions?.find(
+                q => q.qId === item.qId
               );
-              const feedbackText = questionEval?.feedback || null;
+              const audioUrl = item.audioUrl || sessionQuestion?.audioUrl;
               
               console.log(`[결과 페이지] 질문 ${index + 1} (${item.qId}):`, {
                 question: item.question?.substring(0, 30) + '...',
-                hasFeedback: !!feedbackText
+                answer: item.answerTranscript?.substring(0, 30) + '...',
+                hasFeedback: !!item.feedback,
+                hasAudio: !!audioUrl
               });
               
               return (
@@ -270,10 +273,10 @@ export default function InterviewResultPage() {
                   <h4 className="text-sm font-bold text-gray-700 mb-2">내 답변</h4>
                   
                   {/* 오디오 플레이어 */}
-                  {item.audioUrl && (
+                  {audioUrl && (
                     <div className="mb-3">
                       <audio controls className="w-full">
-                        <source src={item.audioUrl} type="audio/webm" />
+                        <source src={audioUrl} type="audio/webm" />
                         브라우저가 오디오를 지원하지 않습니다.
                       </audio>
                     </div>
@@ -302,10 +305,10 @@ export default function InterviewResultPage() {
                     AI 코멘트
                   </h4>
                   
-                  {feedbackText ? (
+                  {item.feedback ? (
                     <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
                       <p className="text-gray-800 leading-relaxed whitespace-pre-line">
-                        {feedbackText}
+                        {item.feedback}
                       </p>
                     </div>
                   ) : (
@@ -327,6 +330,48 @@ export default function InterviewResultPage() {
               </Card>
               );
             })
+          ) : interviewSession?.questions && interviewSession.questions.length > 0 ? (
+            // ===== [폴백] evaluation이 없으면 interview_sessions 데이터 사용 (피드백 없음) =====
+            interviewSession.questions.map((item, index) => (
+              <Card key={item.qId || index}>
+                <div className="mb-4 pb-4 border-b border-gray-200">
+                  <span className="text-sm font-bold text-primary-600 mb-2 block">
+                    질문 {item.qId || index + 1}
+                  </span>
+                  <p className="text-lg font-bold text-gray-900">
+                    {item.question}
+                  </p>
+                </div>
+                <div className="mb-4">
+                  <h4 className="text-sm font-bold text-gray-700 mb-2">내 답변</h4>
+                  {item.audioUrl && (
+                    <div className="mb-3">
+                      <audio controls className="w-full">
+                        <source src={item.audioUrl} type="audio/webm" />
+                        브라우저가 오디오를 지원하지 않습니다.
+                      </audio>
+                    </div>
+                  )}
+                  {item.answerTranscript && (
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <p className="text-gray-700 whitespace-pre-line">
+                        {item.answerTranscript}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-center">
+                    <div className="inline-block animate-pulse mb-2">
+                      <div className="text-2xl">🤔</div>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      AI가 이 답변을 분석하고 있습니다...
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            ))
           ) : (
             <Card>
               <p className="text-center text-gray-600 py-8">

@@ -158,17 +158,17 @@ export default function InterviewPage() {
 
   const handleInterviewComplete = async (interviewId) => {
     try {
-      // ===== [단일 문서 저장] interview_results 컬렉션에 모든 데이터 통합 =====
+      // ===== [단일 문서 저장] interview_sessions 컬렉션에 모든 데이터 통합 =====
       console.log('========================================');
       console.log('[면접 완료] handleInterviewComplete 실행');
       console.log('[면접 완료] - interviewId:', interviewId);
       console.log('[면접 완료] - userId:', user.uid);
       console.log('[면접 완료] - 현재 시각:', new Date().toISOString());
-      console.log('[면접 완료] 🎯 단일 문서 저장 로직 시작!');
+      console.log('[면접 완료] 🎯 5대 컬렉션 저장 로직 시작!');
       console.log('========================================');
       
-      // 1단계: answer_evaluations에서 모든 답변 조회
-      console.log('[면접 완료] 🔍 1단계: answer_evaluations 조회 중...');
+      // ===== [핵심] 1단계: 5개 답변이 모두 저장될 때까지 대기 (Race Condition 해결) =====
+      console.log('[면접 완료] 🔍 1단계: answer_evaluations 조회 중 (최대 5회 재시도)...');
       const answersRef = collection(db, 'answer_evaluations');
       const answersQuery = query(
         answersRef,
@@ -176,8 +176,32 @@ export default function InterviewPage() {
         where('interviewId', '==', interviewId)
       );
       
-      const answersSnapshot = await getDocs(answersQuery);
-      console.log('[면접 완료] 📊 조회 결과:', answersSnapshot.size, '개의 답변');
+      let answersSnapshot;
+      let retryCount = 0;
+      const maxRetries = 5;
+      const expectedAnswerCount = 5;
+      
+      // 5개의 답변이 모두 저장될 때까지 재시도
+      while (retryCount < maxRetries) {
+        answersSnapshot = await getDocs(answersQuery);
+        console.log(`[면접 완료] 📊 조회 시도 ${retryCount + 1}/${maxRetries}:`, answersSnapshot.size, '개의 답변');
+        
+        if (answersSnapshot.size >= expectedAnswerCount) {
+          console.log('[면접 완료] ✅ 5개의 답변이 모두 확인되었습니다!');
+          break;
+        }
+        
+        if (retryCount < maxRetries - 1) {
+          console.warn(`[면접 완료] ⚠️ ${answersSnapshot.size}개만 발견, 1초 후 재시도...`);
+          await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
+        } else {
+          console.warn(`[면접 완료] ⚠️ 최대 재시도 횟수 도달. ${answersSnapshot.size}개로 진행합니다.`);
+        }
+        
+        retryCount++;
+      }
+      
+      console.log('[면접 완료] 📊 최종 조회 결과:', answersSnapshot.size, '개의 답변');
       
       // 2단계: 데이터 가공 (정렬)
       const questionsList = [];

@@ -157,7 +157,7 @@ ${answersText}
     console.log('[종합 피드백 API] - 문서 ID: eval_' + interviewId);
     console.log('[종합 피드백 API] 💡 5대 컬렉션 구조: 답변과 평가를 분리하여 저장');
     
-    // ===== [핵심] questionEvaluations 배열 구성 =====
+    // ===== [핵심] questionEvaluations 배열 구성 (질문 + 답변 + 피드백 통합) =====
     const questionEvaluations = answers.map((question, index) => {
       const questionId = question.qId || question.id || `q${index + 1}`;
       
@@ -168,14 +168,21 @@ ${answersText}
       
       // ===== [진단] 피드백 데이터 상세 로깅 =====
       console.log(`[종합 피드백 API] ===== 질문 ${index + 1} (ID: ${questionId}) =====`);
+      console.log('[종합 피드백 API] - question:', question.question?.substring(0, 30) + '...');
+      console.log('[종합 피드백 API] - answerTranscript:', question.answerTranscript?.substring(0, 30) + '...');
       console.log('[종합 피드백 API] - feedbackItem 존재:', !!feedbackItem);
       console.log('[종합 피드백 API] - feedbackItem.feedback:', feedbackItem?.feedback?.substring(0, 50) + '...');
       
       const feedbackText = feedbackItem?.feedback || '';
       console.log('[종합 피드백 API] - 저장될 feedback:', feedbackText ? '✅ 있음' : '⚠️ 없음');
       
+      // ===== [통합 구조] 질문, 답변, 피드백을 모두 포함 =====
       return {
         qId: questionId,
+        question: question.question,
+        answerTranscript: question.answerTranscript || question.answer || question.transcript,
+        audioUrl: question.audioUrl,
+        duration: question.duration,
         feedback: feedbackText
       };
     });
@@ -205,8 +212,10 @@ ${answersText}
     console.log('[종합 피드백 API] - 평가 ID:', evaluationId);
     console.log('[종합 피드백 API] - 컬렉션: interview_evaluations (5대 컬렉션)');
     console.log('[종합 피드백 API] - 연결된 면접 ID:', interviewId);
+    console.log('[종합 피드백 API] - questionEvaluations 개수:', questionEvaluations.length);
     console.log('[종합 피드백 API] - 완료 시각:', new Date().toISOString());
-    console.log('[종합 피드백 API] 💡 프론트엔드에서 interview_evaluations를 조회하여 표시합니다!');
+    console.log('[종합 피드백 API] 💡 질문, 답변, 피드백이 모두 interview_evaluations에 저장되었습니다!');
+    console.log('[종합 피드백 API] 💡 프론트엔드에서 interview_evaluations만 조회하면 모든 데이터를 확인할 수 있습니다.');
     console.log('========================================');
     
     return NextResponse.json({
