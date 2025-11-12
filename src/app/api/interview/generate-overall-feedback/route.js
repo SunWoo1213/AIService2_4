@@ -3,6 +3,11 @@ import { db } from '@/firebase/config';
 import { collection, query, where, getDocs, doc, updateDoc, Timestamp } from 'firebase/firestore';
 import OpenAI from 'openai';
 
+// ===== [Vercel 타임아웃 설정] =====
+// 종합 피드백 생성은 LLM 호출로 인해 시간이 오래 걸릴 수 있음
+export const maxDuration = 60; // Vercel Hobby: 최대 60초, Pro: 최대 300초
+export const dynamic = 'force-dynamic'; // 동적 라우트로 강제 설정
+
 // ===== [빌드 에러 해결] OpenAI 인스턴스를 함수 내부에서 생성 =====
 // 이유: 빌드 시 환경 변수가 없어도 에러가 발생하지 않도록
 export async function POST(request) {
@@ -120,7 +125,7 @@ ${answersText}
     
     // ===== [3단계] LLM API 호출 =====
     console.log('[종합 피드백 API] 🤖 3단계: LLM API 호출 중...');
-    console.log('[종합 피드백 API] - 모델: gpt-4o');
+    console.log('[종합 피드백 API] - 모델: gpt-4o-mini (빠른 응답)');
     console.log('[종합 피드백 API] - 호출 시각:', new Date().toISOString());
     
     // OpenAI 인스턴스 생성 (함수 내부에서 생성하여 빌드 에러 방지)
@@ -128,14 +133,20 @@ ${answersText}
       apiKey: process.env.OPENAI_API_KEY,
     });
     
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('[종합 피드백 API] ❌ OPENAI_API_KEY 환경 변수가 설정되지 않았습니다!');
+      throw new Error('OPENAI_API_KEY가 설정되지 않았습니다. Vercel 환경 변수를 확인하세요.');
+    }
+    
+    // ===== [속도 최적화] gpt-4o-mini 사용 (gpt-4o보다 10배 빠름) =====
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini', // 빠른 응답 & 비용 절감
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.7,
-      max_tokens: 2000,
+      max_tokens: 1500, // 토큰 제한으로 응답 속도 개선
       response_format: { type: "json_object" }
     });
     
@@ -200,27 +211,60 @@ ${answersText}
   } catch (error) {
     console.error('========================================');
     console.error('[종합 피드백 API] ❌❌❌ 에러 발생! ❌❌❌');
-    console.error('[종합 피드백 API] - 에러:', error);
+    console.error('[종합 피드백 API] - 에러 타입:', error.constructor.name);
     console.error('[종합 피드백 API] - 에러 메시지:', error.message);
+    console.error('[종합 피드백 API] - 에러 코드:', error.code);
     console.error('[종합 피드백 API] - 에러 스택:', error.stack);
     
-    // 에러 원인 분석
-    if (error.message.includes('API key')) {
+    // ===== [상세 에러 분석] =====
+    let errorType = 'UNKNOWN';
+    let userMessage = '종합 피드백 생성 중 오류가 발생했습니다.';
+    let troubleshooting = '';
+    
+    if (error.message?.includes('API key') || error.code === 'invalid_api_key') {
+      errorType = 'API_KEY_ERROR';
+      userMessage = 'OpenAI API 키가 잘못되었거나 설정되지 않았습니다.';
+      troubleshooting = 'Vercel Dashboard → Settings → Environment Variables에서 OPENAI_API_KEY를 확인하세요.';
       console.error('[종합 피드백 API] 🔍 원인: OpenAI API 키 문제');
-      console.error('[종합 피드백 API] 💡 해결방법: .env 파일에서 OPENAI_API_KEY 확인');
-    } else if (error.message.includes('permission')) {
+      console.error('[종합 피드백 API] 💡 해결방법:', troubleshooting);
+    } else if (error.message?.includes('permission') || error.code === 'permission-denied') {
+      errorType = 'FIRESTORE_PERMISSION_ERROR';
+      userMessage = 'Firestore 권한이 거부되었습니다.';
+      troubleshooting = 'Firestore Rules에서 interview_reports 컬렉션의 write 권한을 확인하세요.';
       console.error('[종합 피드백 API] 🔍 원인: Firestore 권한 문제');
-      console.error('[종합 피드백 API] 💡 해결방법: Firestore Rules에서 write 권한 확인');
-    } else if (error.message.includes('JSON')) {
+      console.error('[종합 피드백 API] 💡 해결방법:', troubleshooting);
+    } else if (error.message?.includes('JSON') || error.name === 'SyntaxError') {
+      errorType = 'JSON_PARSE_ERROR';
+      userMessage = 'LLM 응답을 파싱하는 중 오류가 발생했습니다.';
+      troubleshooting = 'LLM이 올바른 JSON 형식을 반환하지 않았습니다. 재시도하세요.';
       console.error('[종합 피드백 API] 🔍 원인: JSON 파싱 실패');
-      console.error('[종합 피드백 API] 💡 해결방법: LLM 응답 형식 확인');
+      console.error('[종합 피드백 API] 💡 해결방법:', troubleshooting);
+    } else if (error.message?.includes('timeout') || error.code === 'ETIMEDOUT') {
+      errorType = 'TIMEOUT_ERROR';
+      userMessage = '요청 시간이 초과되었습니다.';
+      troubleshooting = 'LLM 응답이 너무 오래 걸렸습니다. maxDuration 설정을 확인하거나 더 빠른 모델을 사용하세요.';
+      console.error('[종합 피드백 API] 🔍 원인: 타임아웃');
+      console.error('[종합 피드백 API] 💡 해결방법:', troubleshooting);
+    } else if (error.message?.includes('quota') || error.message?.includes('rate_limit')) {
+      errorType = 'RATE_LIMIT_ERROR';
+      userMessage = 'OpenAI API 사용량 한도를 초과했습니다.';
+      troubleshooting = 'OpenAI API 요금 한도를 확인하거나 결제 방법을 추가하세요.';
+      console.error('[종합 피드백 API] 🔍 원인: API 사용량 한도 초과');
+      console.error('[종합 피드백 API] 💡 해결방법:', troubleshooting);
     }
+    
+    console.error('[종합 피드백 API] - 에러 타입:', errorType);
+    console.error('[종합 피드백 API] - 문제 해결:', troubleshooting);
     console.error('========================================');
     
+    // ===== [클라이언트에 상세 에러 전달] =====
     return NextResponse.json(
       { 
-        error: '종합 피드백 생성 중 오류가 발생했습니다.',
-        details: error.message
+        error: userMessage,
+        errorType: errorType,
+        details: error.message,
+        troubleshooting: troubleshooting,
+        timestamp: new Date().toISOString()
       },
       { status: 500 }
     );
