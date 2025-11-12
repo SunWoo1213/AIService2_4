@@ -30,13 +30,14 @@ export async function POST(request) {
       );
     }
     
-    // ===== [1단계] Firestore에서 해당 세트의 모든 답변 조회 =====
+    // ===== [1단계] [3개 컬렉션 분리] answer_evaluations에서 조회 =====
     console.log('[종합 피드백 API] 🔍 1단계: Firestore에서 답변 조회 중...');
-    console.log('[종합 피드백 API] - 컬렉션: interview_answers');
+    console.log('[종합 피드백 API] - 컬렉션: answer_evaluations');
     console.log('[종합 피드백 API] - 조건: userId == ' + userId);
     console.log('[종합 피드백 API] - 조건: interviewId == ' + interviewId);
+    console.log('[종합 피드백 API] 💡 변경사항: interview_answers → answer_evaluations 컬렉션 사용');
     
-    const answersRef = collection(db, 'interview_answers');
+    const answersRef = collection(db, 'answer_evaluations');
     const q = query(
       answersRef,
       where('userId', '==', userId),
@@ -145,36 +146,36 @@ ${answersText}
     console.log('[종합 피드백 API] ✅ JSON 파싱 성공');
     console.log('[종합 피드백 API] - 필드:', Object.keys(feedbackData).join(', '));
     
-    // ===== [4단계] feedbacks 컬렉션의 부모 문서에 저장 =====
+    // ===== [4단계] [3개 컬렉션 분리] interview_reports 컬렉션 업데이트 =====
     console.log('[종합 피드백 API] 💾 4단계: Firestore에 저장 중...');
-    console.log('[종합 피드백 API] - 컬렉션: feedbacks');
+    console.log('[종합 피드백 API] - 컬렉션: interview_reports');
     console.log('[종합 피드백 API] - 필드: overallFeedback');
+    console.log('[종합 피드백 API] 💡 변경사항: feedbacks → interview_reports 컬렉션 사용');
     
-    // feedbacks 컬렉션에서 해당 interviewId를 가진 문서 찾기
-    const feedbacksRef = collection(db, 'feedbacks');
-    const feedbackQuery = query(
-      feedbacksRef,
+    // interview_reports 컬렉션에서 해당 interviewId를 가진 문서 찾기
+    const reportsRef = collection(db, 'interview_reports');
+    const reportQuery = query(
+      reportsRef,
       where('interviewId', '==', interviewId),
-      where('userId', '==', userId),
-      where('type', '==', 'interview')
+      where('userId', '==', userId)
     );
     
-    const feedbackSnapshot = await getDocs(feedbackQuery);
+    const reportSnapshot = await getDocs(reportQuery);
     
-    if (feedbackSnapshot.empty) {
-      console.warn('[종합 피드백 API] ⚠️ feedbacks 문서를 찾을 수 없습니다.');
+    if (reportSnapshot.empty) {
+      console.warn('[종합 피드백 API] ⚠️ interview_reports 문서를 찾을 수 없습니다.');
       console.warn('[종합 피드백 API] 💡 interview/page.js의 handleInterviewComplete에서 생성되어야 합니다.');
       return NextResponse.json(
-        { error: 'feedbacks 문서를 찾을 수 없습니다.' },
+        { error: 'interview_reports 문서를 찾을 수 없습니다.' },
         { status: 404 }
       );
     }
     
     // 첫 번째 문서 업데이트 (동일한 interviewId는 하나여야 함)
-    const feedbackDoc = feedbackSnapshot.docs[0];
-    const feedbackDocRef = doc(db, 'feedbacks', feedbackDoc.id);
+    const reportDoc = reportSnapshot.docs[0];
+    const reportDocRef = doc(db, 'interview_reports', reportDoc.id);
     
-    await updateDoc(feedbackDocRef, {
+    await updateDoc(reportDocRef, {
       overallFeedback: feedbackData,
       feedbackGeneratedAt: Timestamp.now(),
       updatedAt: new Date().toISOString()
@@ -182,13 +183,14 @@ ${answersText}
     
     console.log('========================================');
     console.log('[종합 피드백 API] ✅✅✅ 성공! ✅✅✅');
-    console.log('[종합 피드백 API] - feedbackId:', feedbackDoc.id);
+    console.log('[종합 피드백 API] - reportId:', reportDoc.id);
+    console.log('[종합 피드백 API] - 컬렉션: interview_reports');
     console.log('[종합 피드백 API] - 완료 시각:', new Date().toISOString());
     console.log('========================================');
     
     return NextResponse.json({
       success: true,
-      feedbackId: feedbackDoc.id,
+      reportId: reportDoc.id,
       message: '종합 피드백이 성공적으로 생성되었습니다.'
     });
     

@@ -158,7 +158,7 @@ export default function InterviewPage() {
 
   const handleInterviewComplete = async (interviewId) => {
     try {
-      // ===== [히스토리 저장] 면접 세션 요약을 feedbacks 컬렉션에 저장 =====
+      // ===== [3개 컬렉션 분리] interview_reports 컬렉션에 저장 =====
       console.log('========================================');
       console.log('[면접 완료] handleInterviewComplete 실행');
       console.log('[면접 완료] - interviewId:', interviewId);
@@ -166,35 +166,38 @@ export default function InterviewPage() {
       console.log('[면접 완료] - 현재 시각:', new Date().toISOString());
       console.log('========================================');
       
-      // Feedbacks 컬렉션에 면접 세션 요약 저장
-      console.log('[면접 완료] 💾 feedbacks 컬렉션에 저장 시작...');
+      // interview_reports 컬렉션에 면접 종합 리포트 저장
+      console.log('[면접 완료] 💾 interview_reports 컬렉션에 저장 시작...');
+      console.log('[면접 완료] 💡 변경사항: feedbacks → interview_reports 컬렉션 사용');
       
-      const interviewSummary = {
+      const interviewReport = {
         userId: user.uid,
-        type: 'interview',
         interviewId: interviewId, // 고유한 면접 세션 ID
         resumeText: selectedFeedback?.resumeText || '',
         jobKeywords: selectedFeedback?.jobKeywords || {},
         tonePreference: selectedTone || defaultTone,
+        overallFeedback: null, // 초기값 (나중에 generate-overall-feedback API에서 업데이트)
+        questionCount: 5, // 질문 개수
         createdAt: new Date().toISOString(),
-        timestamp: new Date()
+        timestamp: new Date(),
+        feedbackGeneratedAt: null,
+        updatedAt: null
       };
       
       console.log('[면접 완료] 📝 저장할 데이터:', {
-        userId: interviewSummary.userId,
-        type: interviewSummary.type,
-        interviewId: interviewSummary.interviewId,
-        tonePreference: interviewSummary.tonePreference,
-        createdAt: interviewSummary.createdAt
+        userId: interviewReport.userId,
+        interviewId: interviewReport.interviewId,
+        tonePreference: interviewReport.tonePreference,
+        questionCount: interviewReport.questionCount,
+        createdAt: interviewReport.createdAt
       });
       
-      const docRef = await addDoc(collection(db, 'feedbacks'), interviewSummary);
+      const docRef = await addDoc(collection(db, 'interview_reports'), interviewReport);
       
       console.log('========================================');
-      console.log('[면접 완료] ✅✅✅ feedbacks 컬렉션 저장 성공! ✅✅✅');
+      console.log('[면접 완료] ✅✅✅ interview_reports 컬렉션 저장 성공! ✅✅✅');
       console.log('[면접 완료] - 저장된 문서 ID:', docRef.id);
-      console.log('[면접 완료] - 컬렉션:', 'feedbacks');
-      console.log('[면접 완료] - 타입:', 'interview');
+      console.log('[면접 완료] - 컬렉션:', 'interview_reports');
       console.log('[면접 완료] 💡 이제 히스토리 페이지에서 이 면접을 볼 수 있습니다!');
       console.log('========================================');
       
