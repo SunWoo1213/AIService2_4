@@ -35,22 +35,38 @@ export default function JobUploader({ onAnalysisComplete }) {
   };
 
   const extractTextFromPDF = async (file) => {
-    const pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    try {
+      // ===== [v5 업데이트] pdfjs-dist v5.4.394 호환 코드 =====
+      const pdfjsLib = await import('pdfjs-dist');
+      
+      // ===== [v5 업데이트] Worker 경로 설정 (.mjs 확장자 사용) =====
+      // CDN 사용으로 public 폴더 복사 불필요
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 
+        `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    
-    let fullText = '';
-    
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items.map(item => item.str).join(' ');
-      fullText += pageText + '\n';
+      const arrayBuffer = await file.arrayBuffer();
+      
+      // ===== [v5 호환] getDocument 사용법은 동일 =====
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      const pdf = await loadingTask.promise;
+      
+      let fullText = '';
+      
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map(item => item.str)
+          .join(' ');
+        fullText += pageText + '\n';
+      }
+      
+      return fullText.trim();
+      
+    } catch (error) {
+      console.error('[PDF 추출] 에러 발생:', error);
+      throw new Error('PDF 텍스트 추출 실패: ' + error.message);
     }
-    
-    return fullText;
   };
 
   const handleAnalyze = async () => {
