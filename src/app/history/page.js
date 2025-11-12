@@ -70,12 +70,45 @@ export default function HistoryPage() {
         });
         
         console.log('[히스토리 페이지] ✅ 총', feedbackList.length, '개의 피드백 데이터 로드됨');
+        
+        // ===== [1단계 진단] 첫 번째 문서 전체 구조 출력 =====
         if (feedbackList.length > 0) {
-          console.log('[히스토리 페이지] - 첫 번째 피드백 샘플:', {
-            id: feedbackList[0].id,
-            type: feedbackList[0].type,
-            createdAt: feedbackList[0].createdAt
-          });
+          console.log('========================================');
+          console.log('[진단 1단계] 📋 첫 번째 문서 전체 구조:');
+          console.log(JSON.stringify(feedbackList[0], null, 2));
+          console.log('========================================');
+          
+          console.log('[진단 1단계] 🔍 면접 타입 문서 분석:');
+          const interviewDocs = feedbackList.filter(f => f.type === 'interview');
+          if (interviewDocs.length > 0) {
+            const firstInterview = interviewDocs[0];
+            console.log('[진단 1단계] - 문서 ID:', firstInterview.id);
+            console.log('[진단 1단계] - type:', firstInterview.type);
+            console.log('[진단 1단계] - interviewId 존재:', !!firstInterview.interviewId);
+            console.log('[진단 1단계] - interviewId 값:', firstInterview.interviewId);
+            console.log('[진단 1단계] - overallFeedback 존재:', !!firstInterview.overallFeedback);
+            console.log('[진단 1단계] - overallFeedback 타입:', typeof firstInterview.overallFeedback);
+            
+            if (firstInterview.overallFeedback) {
+              console.log('[진단 1단계] ✅ overallFeedback 필드 발견!');
+              console.log('[진단 1단계] - overallFeedback 키:', Object.keys(firstInterview.overallFeedback));
+              console.log('[진단 1단계] - strengths 존재:', !!firstInterview.overallFeedback.strengths);
+              console.log('[진단 1단계] - weaknesses 존재:', !!firstInterview.overallFeedback.weaknesses);
+              console.log('[진단 1단계] - summary 존재:', !!firstInterview.overallFeedback.summary);
+            } else {
+              console.warn('[진단 1단계] ⚠️ overallFeedback 필드가 없습니다!');
+              console.warn('[진단 1단계] 💡 면접 완료 후 종합 피드백 생성이 안 되었을 수 있습니다.');
+            }
+            
+            console.log('[진단 1단계] - resumeText 존재:', !!firstInterview.resumeText);
+            console.log('[진단 1단계] - jobKeywords 존재:', !!firstInterview.jobKeywords);
+            console.log('[진단 1단계] - tonePreference:', firstInterview.tonePreference);
+            console.log('[진단 1단계] - createdAt:', firstInterview.createdAt);
+            console.log('[진단 1단계] - feedbackGeneratedAt 존재:', !!firstInterview.feedbackGeneratedAt);
+          } else {
+            console.warn('[진단 1단계] ⚠️ interview 타입 문서가 없습니다!');
+          }
+          console.log('========================================');
         } else {
           console.warn('[히스토리 페이지] ⚠️ 경고: 피드백 데이터가 0개입니다!');
         }

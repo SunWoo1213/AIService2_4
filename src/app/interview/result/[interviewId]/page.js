@@ -213,10 +213,14 @@ export default function InterviewResultPage() {
       );
 
       // ===== [세트 기반] feedbacks 컬렉션에서 종합 피드백 조회 =====
-      console.log('[종합 피드백] 📡 feedbacks 컬렉션 조회 시작');
-      console.log('[종합 피드백] - 컬렉션: feedbacks');
-      console.log('[종합 피드백] - 조건: userId == ' + user.uid);
-      console.log('[종합 피드백] - 조건: interviewId == ' + interviewId);
+      console.log('========================================');
+      console.log('[3단계 확인] 종합 피드백 조회 시작');
+      console.log('[3단계 확인] 📡 feedbacks 컬렉션 조회');
+      console.log('[3단계 확인] - 컬렉션: feedbacks');
+      console.log('[3단계 확인] - 조건: userId == ' + user.uid);
+      console.log('[3단계 확인] - 조건: interviewId == ' + interviewId);
+      console.log('[3단계 확인] - 조건: type == interview');
+      console.log('========================================');
       
       const feedbacksRef = collection(db, 'feedbacks');
       const feedbackQuery = query(
@@ -229,32 +233,52 @@ export default function InterviewResultPage() {
       const unsubscribeFeedback = onSnapshot(
         feedbackQuery,
         (feedbackSnapshot) => {
-          console.log('[종합 피드백] 📥 feedbacks 스냅샷 수신');
-          console.log('[종합 피드백] - 문서 개수:', feedbackSnapshot.size);
+          console.log('========================================');
+          console.log('[3단계 확인] 📥 feedbacks 스냅샷 수신');
+          console.log('[3단계 확인] - 스냅샷 비어있음:', feedbackSnapshot.empty);
+          console.log('[3단계 확인] - 문서 개수:', feedbackSnapshot.size);
           
           if (!feedbackSnapshot.empty) {
             const feedbackDoc = feedbackSnapshot.docs[0];
             const feedbackData = feedbackDoc.data();
             
-            console.log('[종합 피드백] ✅ 종합 피드백 데이터 발견!');
-            console.log('[종합 피드백] - 문서 ID:', feedbackDoc.id);
-            console.log('[종합 피드백] - overallFeedback 필드 존재:', !!feedbackData.overallFeedback);
+            console.log('[3단계 확인] ✅ 종합 피드백 문서 발견!');
+            console.log('[3단계 확인] - 문서 ID:', feedbackDoc.id);
+            console.log('[3단계 확인] - 전체 데이터:', JSON.stringify(feedbackData, null, 2));
+            console.log('[3단계 확인] - overallFeedback 필드 존재:', !!feedbackData.overallFeedback);
+            console.log('[3단계 확인] - overallFeedback 타입:', typeof feedbackData.overallFeedback);
             
             if (feedbackData.overallFeedback) {
-              console.log('[종합 피드백] 🎉 종합 피드백 로드 완료!');
+              console.log('[3단계 확인] 🎉🎉🎉 종합 피드백 로드 완료! 🎉🎉🎉');
+              console.log('[3단계 확인] - 필드:', Object.keys(feedbackData.overallFeedback));
+              console.log('[3단계 확인] - strengths 미리보기:', feedbackData.overallFeedback.strengths?.substring(0, 50) + '...');
               setOverallFeedback(feedbackData.overallFeedback);
             } else {
-              console.log('[종합 피드백] ⏳ 종합 피드백 생성 대기 중...');
+              console.log('[3단계 확인] ⏳ 종합 피드백 아직 생성 안됨 (null)');
+              console.log('[3단계 확인] 💡 백그라운드에서 생성 중일 수 있습니다. 잠시 기다리세요.');
               setOverallFeedback(null);
             }
           } else {
-            console.warn('[종합 피드백] ⚠️ feedbacks 문서를 찾을 수 없습니다.');
+            console.warn('========================================');
+            console.warn('[3단계 확인] ⚠️⚠️⚠️ feedbacks 문서를 찾을 수 없습니다! ⚠️⚠️⚠️');
+            console.warn('[3단계 확인] 가능한 원인:');
+            console.warn('[3단계 확인] 1. handleInterviewComplete에서 feedbacks 저장 안됨');
+            console.warn('[3단계 확인] 2. interviewId 불일치:', interviewId);
+            console.warn('[3단계 확인] 3. type 필드 누락');
+            console.warn('[3단계 확인] 💡 interview/page.js의 handleInterviewComplete 로그 확인하세요!');
+            console.warn('========================================');
           }
+          console.log('========================================');
           
           setFeedbackLoading(false);
         },
         (feedbackError) => {
-          console.error('[종합 피드백] ❌ feedbacks 조회 에러:', feedbackError);
+          console.error('========================================');
+          console.error('[3단계 확인] ❌ feedbacks 조회 에러!');
+          console.error('[3단계 확인] - 에러:', feedbackError);
+          console.error('[3단계 확인] - error.code:', feedbackError.code);
+          console.error('[3단계 확인] - error.message:', feedbackError.message);
+          console.error('========================================');
           setFeedbackLoading(false);
         }
       );
