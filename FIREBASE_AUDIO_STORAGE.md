@@ -98,8 +98,8 @@ gs://your-project.appspot.com/
 | `question` | string | 면접 질문 내용 | ✅ |
 | `transcript` | string | STT 변환 텍스트 | ✅ |
 | `audioURL` | string \| null | Firebase Storage URL | ❌ |
-| `feedback` | string | AI 피드백 | ✅ |
-| `score` | number \| null | 점수 (0-10) | ❌ |
+| `feedback` | null | ~~AI 피드백~~ → **제거됨 (세트 기반)** | ❌ |
+| ~~`score`~~ | ~~number \| null~~ | ~~점수 (0-10)~~ → **제거됨** | ❌ |
 | `duration` | number | 녹음 시간 (초) | ✅ |
 | `timestamp` | Timestamp | Firestore 타임스탬프 | ✅ |
 | `createdAt` | string | ISO 날짜 문자열 | ✅ |
