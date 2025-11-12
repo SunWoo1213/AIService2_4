@@ -68,9 +68,10 @@ export async function POST(request) {
     // ===== [2단계] LLM 프롬프트 구성 =====
     console.log('[종합 피드백 API] 📝 2단계: LLM 프롬프트 구성 중...');
     
-    // 답변 내용을 텍스트로 구성
+    // 답변 내용을 텍스트로 구성 (질문 ID 포함)
     const answersText = answers.map((answer, index) => {
       return `
+**질문 ID**: ${answer.id || `q${index + 1}`}
 **질문 ${index + 1}**: ${answer.question}
 **답변**: ${answer.answer || answer.transcript}
 **답변 시간**: ${answer.duration}초
@@ -78,30 +79,35 @@ export async function POST(request) {
     }).join('\n---\n');
     
     const systemPrompt = `당신은 채용 전문가이자 시니어 면접관입니다. 
-지원자의 전체 면접 답변(5개 질문)을 종합적으로 분석하여 깊이 있는 피드백을 제공하세요.
+지원자의 전체 면접 답변을 종합적으로 분석하여 깊이 있는 피드백을 제공하세요.
 
-평가 기준:
-1. **전체적인 일관성**: 답변들이 일관된 메시지와 스토리를 전달하는가?
-2. **강점 (Strengths)**: 전반적으로 돋보이는 점, 잘한 점
-3. **약점 (Weaknesses)**: 전반적으로 부족한 점, 개선이 필요한 점
-4. **개선 방향 (Improvements)**: 구체적이고 실행 가능한 조언
-5. **종합 평가 (Summary)**: 전체적인 인상과 최종 의견
+**평가 기준:**
+1. **종합 평가 (overallReview)**: 전체 면접에서의 일관성, 강점, 약점, 개선 방향을 종합한 전반적인 평가
+2. **개별 피드백 (questionFeedbacks)**: 각 질문/답변에 대한 구체적이고 실행 가능한 피드백
 
-반드시 JSON 형식으로 응답하세요:
+반드시 다음 JSON 형식으로 응답하세요:
 {
-  "overallConsistency": "답변들의 일관성 평가",
-  "strengths": "전체 면접에서 돋보인 강점",
-  "weaknesses": "전체 면접에서 보완이 필요한 점",
-  "improvements": "구체적인 개선 방향 및 조언",
-  "summary": "종합 평가 및 최종 의견"
-}`;
+  "overallReview": "전체적인 강점과 약점을 종합한 평가 (3-4문단 분량)",
+  "questionFeedbacks": [
+    { "id": "q1", "feedback": "1번 질문에 대한 구체적 피드백 (2-3문장)" },
+    { "id": "q2", "feedback": "2번 질문에 대한 구체적 피드백 (2-3문장)" },
+    { "id": "q3", "feedback": "3번 질문에 대한 구체적 피드백 (2-3문장)" },
+    { "id": "q4", "feedback": "4번 질문에 대한 구체적 피드백 (2-3문장)" },
+    { "id": "q5", "feedback": "5번 질문에 대한 구체적 피드백 (2-3문장)" }
+  ]
+}
+
+**개별 피드백 작성 가이드:**
+- 답변의 핵심 내용을 언급하며 시작
+- 잘한 점과 개선할 점을 균형있게 제시
+- 구체적이고 실행 가능한 조언 포함`;
     
-    const userPrompt = `다음은 지원자의 전체 면접 답변 내역(1번~5번)입니다. 
-전체적인 일관성, 강점, 약점을 분석하여 종합 피드백을 제공해주세요.
+    const userPrompt = `다음은 지원자의 전체 면접 답변 내역입니다. 
+종합 평가(overallReview)와 각 질문별 개별 피드백(questionFeedbacks)을 JSON 형식으로 제공해주세요.
 
 ${answersText}
 
-위 답변들을 종합적으로 분석하여 깊이 있는 피드백을 JSON 형식으로 제공해주세요.`;
+위 답변들을 분석하여 종합 평가와 각 질문에 대한 개별 피드백을 JSON 형식으로 제공해주세요.`;
     
     console.log('[종합 피드백 API] ✅ 프롬프트 구성 완료');
     console.log('[종합 피드백 API] - 답변 개수:', answers.length);
@@ -143,19 +149,43 @@ ${answersText}
     
     console.log('[종합 피드백 API] ✅ JSON 파싱 성공');
     console.log('[종합 피드백 API] - 필드:', Object.keys(feedbackData).join(', '));
+    console.log('[종합 피드백 API] - overallReview 길이:', feedbackData.overallReview?.length || 0, 'bytes');
+    console.log('[종합 피드백 API] - questionFeedbacks 개수:', feedbackData.questionFeedbacks?.length || 0);
     
     // ===== [4단계] [단일 문서] interview_results 업데이트 =====
     console.log('[종합 피드백 API] 💾 4단계: interview_results 업데이트 중...');
     console.log('[종합 피드백 API] - 문서 경로: interview_results/' + interviewId);
-    console.log('[종합 피드백 API] - 필드: overallFeedback');
+    console.log('[종합 피드백 API] - 필드: overallReview + questions[].aiFeedback 병합');
     console.log('[종합 피드백 API] 💡 단일 문서 구조: 기존 문서에 피드백 추가');
+    
+    // ===== [핵심] questions 배열에 aiFeedback 병합 =====
+    const updatedQuestions = answers.map((question, index) => {
+      const questionId = question.id || `q${index + 1}`;
+      
+      // questionFeedbacks에서 해당 질문의 피드백 찾기
+      const feedbackItem = feedbackData.questionFeedbacks?.find(
+        item => item.id === questionId
+      );
+      
+      console.log(`[종합 피드백 API] 질문 ${index + 1} (${questionId}): aiFeedback 병합`, 
+        feedbackItem ? '✅' : '⚠️ 피드백 없음');
+      
+      // 기존 질문 데이터에 aiFeedback 필드 추가
+      return {
+        ...question,
+        aiFeedback: feedbackItem?.feedback || '피드백 생성 중...'
+      };
+    });
+    
+    console.log('[종합 피드백 API] ✅ questions 배열 aiFeedback 병합 완료:', updatedQuestions.length, '개');
     
     // interview_results 문서 업데이트
     const { updateDoc } = await import('firebase/firestore');
     const updateDocRef = doc(db, 'interview_results', interviewId);
     
     await updateDoc(updateDocRef, {
-      overallFeedback: feedbackData,
+      overallReview: feedbackData.overallReview,
+      questions: updatedQuestions, // aiFeedback이 병합된 배열
       feedbackGeneratedAt: Timestamp.now(),
       updatedAt: new Date().toISOString()
     });

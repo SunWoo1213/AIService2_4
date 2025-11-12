@@ -98,36 +98,9 @@ export default function InterviewResultPage() {
     return () => unsubscribe();
   }, [user, authLoading, interviewId, router]);
 
-  // ===== [종합 피드백 생성 트리거] =====
-  const handleGenerateFeedback = async () => {
-    if (!interviewResult) return;
-    
-    try {
-      console.log('[결과 페이지] 🤖 종합 피드백 생성 시작...');
-      
-      const response = await fetch('/api/interview/generate-overall-feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          interviewId: interviewId,
-          userId: user.uid
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || '종합 피드백 생성 실패');
-      }
-
-      const result = await response.json();
-      console.log('[결과 페이지] ✅ 종합 피드백 생성 성공:', result);
-      
-      alert('종합 피드백이 생성되었습니다! 잠시 후 화면에 표시됩니다.');
-    } catch (error) {
-      console.error('[결과 페이지] ❌ 종합 피드백 생성 에러:', error);
-      alert('종합 피드백 생성 중 오류가 발생했습니다: ' + error.message);
-    }
-  };
+  // ===== [피드백 로딩 상태 확인] =====
+  const isFeedbackLoading = !interviewResult?.overallReview || 
+    interviewResult?.questions?.some(q => !q.aiFeedback);
 
   if (authLoading || loading) {
     return (
@@ -187,58 +160,34 @@ export default function InterviewResultPage() {
         </div>
 
         {/* 종합 피드백 섹션 */}
-        <Card className="mb-8">
+        <Card className="mb-8 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
           <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
             <span className="text-3xl">📊</span>
             종합 피드백
           </h2>
           
-          {interviewResult.overallFeedback ? (
-            <div className="space-y-4">
-              {interviewResult.overallFeedback.overallConsistency && (
-                <div>
-                  <h3 className="font-bold text-gray-800 mb-2">일관성 평가</h3>
-                  <p className="text-gray-700">{interviewResult.overallFeedback.overallConsistency}</p>
-                </div>
-              )}
-              
-              {interviewResult.overallFeedback.strengths && (
-                <div>
-                  <h3 className="font-bold text-green-800 mb-2">💪 강점</h3>
-                  <p className="text-gray-700 whitespace-pre-line">{interviewResult.overallFeedback.strengths}</p>
-                </div>
-              )}
-              
-              {interviewResult.overallFeedback.weaknesses && (
-                <div>
-                  <h3 className="font-bold text-orange-800 mb-2">📌 약점</h3>
-                  <p className="text-gray-700 whitespace-pre-line">{interviewResult.overallFeedback.weaknesses}</p>
-                </div>
-              )}
-              
-              {interviewResult.overallFeedback.improvements && (
-                <div>
-                  <h3 className="font-bold text-blue-800 mb-2">🚀 개선 방향</h3>
-                  <p className="text-gray-700 whitespace-pre-line">{interviewResult.overallFeedback.improvements}</p>
-                </div>
-              )}
-              
-              {interviewResult.overallFeedback.summary && (
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h3 className="font-bold text-gray-800 mb-2">📝 종합 평가</h3>
-                  <p className="text-gray-700 whitespace-pre-line">{interviewResult.overallFeedback.summary}</p>
-                </div>
-              )}
+          {interviewResult.overallReview ? (
+            <div className="bg-white p-6 rounded-lg shadow-sm">
+              <p className="text-gray-800 leading-relaxed whitespace-pre-line">
+                {interviewResult.overallReview}
+              </p>
             </div>
           ) : (
-            <div className="text-center py-8">
-              <div className="text-4xl mb-4">⏳</div>
+            <div className="bg-white p-8 rounded-lg text-center">
+              <div className="inline-block animate-pulse mb-4">
+                <div className="text-5xl">🤖</div>
+              </div>
+              <h3 className="text-lg font-bold text-gray-800 mb-2">
+                AI 면접관이 꼼꼼하게 분석 중입니다...
+              </h3>
               <p className="text-gray-600 mb-4">
-                AI가 면접 답변을 종합적으로 분석하고 있습니다...
+                전체 답변을 종합적으로 분석하여 깊이 있는 피드백을 작성하고 있습니다.
               </p>
-              <Button onClick={handleGenerateFeedback}>
-                종합 피드백 생성하기
-              </Button>
+              <div className="flex justify-center items-center gap-2">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              </div>
             </div>
           )}
         </Card>
@@ -287,6 +236,36 @@ export default function InterviewResultPage() {
                     <p className="text-xs text-gray-500 mt-2">
                       답변 시간: {item.duration}초
                     </p>
+                  )}
+                </div>
+
+                {/* AI 코멘트 섹션 */}
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <h4 className="text-sm font-bold text-indigo-700 mb-2 flex items-center gap-2">
+                    <span className="text-lg">💡</span>
+                    AI 코멘트
+                  </h4>
+                  
+                  {item.aiFeedback ? (
+                    <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
+                      <p className="text-gray-800 leading-relaxed">
+                        {item.aiFeedback}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-center">
+                      <div className="inline-block animate-pulse mb-2">
+                        <div className="text-2xl">🤔</div>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        AI가 이 답변을 분석하고 있습니다...
+                      </p>
+                      <div className="flex justify-center items-center gap-1 mt-2">
+                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      </div>
+                    </div>
                   )}
                 </div>
               </Card>
