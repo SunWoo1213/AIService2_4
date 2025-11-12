@@ -116,15 +116,25 @@
 
 ```javascript
 // Firestore Composite Index
+// 중요: timestamp는 ASCENDING으로 설정 (코드에서 orderBy('timestamp', 'asc') 사용)
 {
   collection: 'interview_answers',
   fields: [
     { fieldPath: 'userId', order: 'ASCENDING' },
     { fieldPath: 'interviewId', order: 'ASCENDING' },
-    { fieldPath: 'timestamp', order: 'DESCENDING' }
+    { fieldPath: 'timestamp', order: 'ASCENDING' }  // ASC: 질문 순서대로 표시
   ]
 }
 ```
+
+**Firebase Console에서 생성하는 방법:**
+1. Firebase Console → Firestore Database → 인덱스 탭
+2. 복합 인덱스 추가 클릭
+3. 컬렉션: `interview_answers`
+4. 필드: `userId (오름차순)`, `interviewId (오름차순)`, `timestamp (오름차순)`
+5. 만들기 클릭
+
+자세한 가이드는 `FIRESTORE_INDEX_GUIDE.md` 참고
 
 ### Storage 구조
 
