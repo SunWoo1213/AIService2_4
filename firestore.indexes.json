@@ -1,7 +1,7 @@
 {
   "indexes": [
     {
-      "collectionGroup": "interview_answers",
+      "collectionGroup": "interview_results",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -9,16 +9,25 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "interviewId",
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "resume_feedbacks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "timestamp",
-          "order": "ASCENDING"
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
         }
       ]
     }
   ],
   "fieldOverrides": []
 }
-
