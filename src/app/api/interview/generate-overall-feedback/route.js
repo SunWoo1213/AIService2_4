@@ -33,25 +33,29 @@ export async function POST(request) {
       );
     }
     
-    // ===== [1단계] [3개 컬렉션 분리] answer_evaluations에서 조회 =====
-    console.log('[종합 피드백 API] 🔍 1단계: Firestore에서 답변 조회 중...');
-    console.log('[종합 피드백 API] - 컬렉션: answer_evaluations');
-    console.log('[종합 피드백 API] - 조건: userId == ' + userId);
-    console.log('[종합 피드백 API] - 조건: interviewId == ' + interviewId);
-    console.log('[종합 피드백 API] 💡 변경사항: interview_answers → answer_evaluations 컬렉션 사용');
+    // ===== [1단계] [단일 문서] interview_results에서 조회 =====
+    console.log('[종합 피드백 API] 🔍 1단계: interview_results 조회 중...');
+    console.log('[종합 피드백 API] - 문서 경로: interview_results/' + interviewId);
+    console.log('[종합 피드백 API] 💡 단일 문서 구조 사용');
     
-    const answersRef = collection(db, 'answer_evaluations');
-    const q = query(
-      answersRef,
-      where('userId', '==', userId),
-      where('interviewId', '==', interviewId)
-    );
+    const { doc, getDoc } = await import('firebase/firestore');
+    const docRef = doc(db, 'interview_results', interviewId);
+    const docSnapshot = await getDoc(docRef);
     
-    const querySnapshot = await getDocs(q);
+    if (!docSnapshot.exists()) {
+      console.warn('[종합 피드백 API] ⚠️ interview_results 문서가 없습니다.');
+      return NextResponse.json(
+        { error: 'interview_results 문서를 찾을 수 없습니다.' },
+        { status: 404 }
+      );
+    }
     
-    console.log('[종합 피드백 API] 📊 조회 결과:', querySnapshot.size, '개의 답변');
+    const interviewData = docSnapshot.data();
+    const answers = interviewData.questions || [];
     
-    if (querySnapshot.empty) {
+    console.log('[종합 피드백 API] 📊 조회 결과:', answers.length, '개의 답변');
+    
+    if (answers.length === 0) {
       console.warn('[종합 피드백 API] ⚠️ 답변이 없습니다.');
       return NextResponse.json(
         { error: '답변 데이터를 찾을 수 없습니다.' },
@@ -59,27 +63,7 @@ export async function POST(request) {
       );
     }
     
-    // 답변 데이터 배열로 변환
-    const answers = [];
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      answers.push({
-        questionId: data.questionId,
-        question: data.question,
-        transcript: data.transcript,
-        duration: data.duration,
-        timestamp: data.timestamp
-      });
-    });
-    
-    // questionId 순서대로 정렬 (q1, q2, q3, q4, q5)
-    answers.sort((a, b) => {
-      const numA = parseInt(a.questionId.replace('q', ''));
-      const numB = parseInt(b.questionId.replace('q', ''));
-      return numA - numB;
-    });
-    
-    console.log('[종합 피드백 API] ✅ 답변 정렬 완료:', answers.map(a => a.questionId).join(', '));
+    console.log('[종합 피드백 API] ✅ 답변 조회 완료:', answers.length, '개');
     
     // ===== [2단계] LLM 프롬프트 구성 =====
     console.log('[종합 피드백 API] 📝 2단계: LLM 프롬프트 구성 중...');
@@ -88,7 +72,7 @@ export async function POST(request) {
     const answersText = answers.map((answer, index) => {
       return `
 **질문 ${index + 1}**: ${answer.question}
-**답변**: ${answer.transcript}
+**답변**: ${answer.answer || answer.transcript}
 **답변 시간**: ${answer.duration}초
 `;
     }).join('\n---\n');
@@ -160,36 +144,17 @@ ${answersText}
     console.log('[종합 피드백 API] ✅ JSON 파싱 성공');
     console.log('[종합 피드백 API] - 필드:', Object.keys(feedbackData).join(', '));
     
-    // ===== [4단계] [3개 컬렉션 분리] interview_reports 컬렉션 업데이트 =====
-    console.log('[종합 피드백 API] 💾 4단계: Firestore에 저장 중...');
-    console.log('[종합 피드백 API] - 컬렉션: interview_reports');
+    // ===== [4단계] [단일 문서] interview_results 업데이트 =====
+    console.log('[종합 피드백 API] 💾 4단계: interview_results 업데이트 중...');
+    console.log('[종합 피드백 API] - 문서 경로: interview_results/' + interviewId);
     console.log('[종합 피드백 API] - 필드: overallFeedback');
-    console.log('[종합 피드백 API] 💡 변경사항: feedbacks → interview_reports 컬렉션 사용');
+    console.log('[종합 피드백 API] 💡 단일 문서 구조: 기존 문서에 피드백 추가');
     
-    // interview_reports 컬렉션에서 해당 interviewId를 가진 문서 찾기
-    const reportsRef = collection(db, 'interview_reports');
-    const reportQuery = query(
-      reportsRef,
-      where('interviewId', '==', interviewId),
-      where('userId', '==', userId)
-    );
+    // interview_results 문서 업데이트
+    const { updateDoc } = await import('firebase/firestore');
+    const updateDocRef = doc(db, 'interview_results', interviewId);
     
-    const reportSnapshot = await getDocs(reportQuery);
-    
-    if (reportSnapshot.empty) {
-      console.warn('[종합 피드백 API] ⚠️ interview_reports 문서를 찾을 수 없습니다.');
-      console.warn('[종합 피드백 API] 💡 interview/page.js의 handleInterviewComplete에서 생성되어야 합니다.');
-      return NextResponse.json(
-        { error: 'interview_reports 문서를 찾을 수 없습니다.' },
-        { status: 404 }
-      );
-    }
-    
-    // 첫 번째 문서 업데이트 (동일한 interviewId는 하나여야 함)
-    const reportDoc = reportSnapshot.docs[0];
-    const reportDocRef = doc(db, 'interview_reports', reportDoc.id);
-    
-    await updateDoc(reportDocRef, {
+    await updateDoc(updateDocRef, {
       overallFeedback: feedbackData,
       feedbackGeneratedAt: Timestamp.now(),
       updatedAt: new Date().toISOString()
@@ -197,14 +162,15 @@ ${answersText}
     
     console.log('========================================');
     console.log('[종합 피드백 API] ✅✅✅ 성공! ✅✅✅');
-    console.log('[종합 피드백 API] - reportId:', reportDoc.id);
-    console.log('[종합 피드백 API] - 컬렉션: interview_reports');
+    console.log('[종합 피드백 API] - 문서 ID:', interviewId);
+    console.log('[종합 피드백 API] - 컬렉션: interview_results');
     console.log('[종합 피드백 API] - 완료 시각:', new Date().toISOString());
+    console.log('[종합 피드백 API] 💡 onSnapshot이 자동으로 프론트엔드를 업데이트합니다!');
     console.log('========================================');
     
     return NextResponse.json({
       success: true,
-      reportId: reportDoc.id,
+      interviewId: interviewId,
       message: '종합 피드백이 성공적으로 생성되었습니다.'
     });
     
@@ -230,7 +196,7 @@ ${answersText}
     } else if (error.message?.includes('permission') || error.code === 'permission-denied') {
       errorType = 'FIRESTORE_PERMISSION_ERROR';
       userMessage = 'Firestore 권한이 거부되었습니다.';
-      troubleshooting = 'Firestore Rules에서 interview_reports 컬렉션의 write 권한을 확인하세요.';
+      troubleshooting = 'Firestore Rules에서 interview_results 컬렉션의 write 권한을 확인하세요.';
       console.error('[종합 피드백 API] 🔍 원인: Firestore 권한 문제');
       console.error('[종합 피드백 API] 💡 해결방법:', troubleshooting);
     } else if (error.message?.includes('JSON') || error.name === 'SyntaxError') {
