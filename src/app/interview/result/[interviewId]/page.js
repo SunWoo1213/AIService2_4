@@ -123,17 +123,25 @@ export default function InterviewResultPage() {
             {/* 진행률 표시 */}
             <Card>
               <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-800 mb-1">면접 진행 상황</h3>
-                  <p className="text-sm text-gray-600">
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-gray-800 mb-2">면접 분석 현황</h3>
+                  <p className="text-sm text-gray-600 mb-3">
                     총 {answers.length}개의 질문에 답변하셨습니다.
                   </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-2xl font-bold text-primary-600">
-                    {answers.filter(a => a.feedback && a.feedback !== '평가 중...').length} / {answers.length}
-                  </p>
-                  <p className="text-xs text-gray-500">피드백 완료</p>
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                      <span className="text-sm text-gray-700">
+                        분석 완료: <strong>{answers.filter(a => a.feedback && a.feedback !== '평가 중...').length}개</strong>
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-3 h-3 rounded-full bg-yellow-500 animate-pulse"></div>
+                      <span className="text-sm text-gray-700">
+                        분석 중: <strong>{answers.filter(a => !a.feedback || a.feedback === '평가 중...').length}개</strong>
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </Card>
@@ -154,27 +162,21 @@ export default function InterviewResultPage() {
                     </p>
                   </div>
 
-                  {/* 내 답변 */}
-                  <div className="mb-4">
-                    <p className="text-xs font-semibold text-gray-500 mb-2">내 답변 (Transcript)</p>
-                    {answer.transcript && answer.transcript !== '답변 없음' ? (
-                      <p className="text-sm text-gray-700 bg-gray-50 p-4 rounded-lg border border-gray-200 whitespace-pre-wrap">
-                        {answer.transcript}
-                      </p>
-                    ) : (
-                      <p className="text-sm text-gray-400 italic bg-gray-50 p-4 rounded-lg border border-gray-200">
-                        답변이 감지되지 않았습니다.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* 다시 듣기 (오디오) */}
+                  {/* ===== [재생용] 오디오 플레이어 (상단 배치) ===== */}
                   {answer.audioURL && (
-                    <div className="mb-4">
-                      <p className="text-xs font-semibold text-gray-500 mb-2">🎧 다시 듣기</p>
+                    <div className="mb-6 bg-gradient-to-r from-indigo-50 to-purple-50 p-5 rounded-xl border-2 border-indigo-200">
+                      <div className="flex items-start space-x-3 mb-3">
+                        <span className="text-2xl">🎧</span>
+                        <div className="flex-1">
+                          <p className="text-sm font-bold text-indigo-900 mb-1">답변 녹음 다시 듣기 (Playback)</p>
+                          <p className="text-xs text-indigo-700 mb-3">
+                            💡 이 오디오는 <strong>재생 전용</strong>입니다. 아래 피드백은 <strong>텍스트 내용</strong>을 기반으로 평가되었습니다.
+                          </p>
+                        </div>
+                      </div>
                       <audio 
                         controls 
-                        className="w-full"
+                        className="w-full rounded-lg shadow-sm"
                         style={{ height: '48px' }}
                         preload="metadata"
                       >
@@ -184,6 +186,28 @@ export default function InterviewResultPage() {
                       </audio>
                     </div>
                   )}
+
+                  {/* ===== [분석용] 내 답변 텍스트 ===== */}
+                  <div className="mb-4">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <p className="text-xs font-semibold text-gray-500">내 답변 텍스트 (Transcript)</p>
+                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                        분석 대상
+                      </span>
+                    </div>
+                    {answer.transcript && answer.transcript !== '답변 없음' ? (
+                      <p className="text-sm text-gray-700 bg-gray-50 p-4 rounded-lg border border-gray-200 whitespace-pre-wrap leading-relaxed">
+                        {answer.transcript}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-400 italic bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        답변이 감지되지 않았습니다.
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-2 italic">
+                      ℹ️ AI는 위 텍스트 내용을 분석하여 피드백을 제공합니다.
+                    </p>
+                  </div>
 
                   {/* AI 피드백 */}
                   <div>
@@ -200,23 +224,86 @@ export default function InterviewResultPage() {
                           잠시만 기다려주세요. 분석이 완료되면 자동으로 표시됩니다.
                         </p>
                       </div>
-                    ) : (
-                      <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                        <div className="flex items-start space-x-2">
-                          <span className="text-green-600 font-bold text-lg">✓</span>
-                          <div className="flex-1">
-                            <p className="text-sm text-gray-800 whitespace-pre-wrap">
-                              {answer.feedback}
-                            </p>
-                            {answer.score && (
-                              <p className="text-xs text-green-700 font-semibold mt-2">
-                                평가 점수: {answer.score}/10
-                              </p>
+                    ) : (() => {
+                      try {
+                        // JSON 파싱 시도
+                        const feedbackData = typeof answer.feedback === 'string' 
+                          ? JSON.parse(answer.feedback) 
+                          : answer.feedback;
+                        
+                        return (
+                          <div className="space-y-4">
+                            {/* 강점 */}
+                            {feedbackData.strengths && feedbackData.strengths.trim() !== '' && 
+                             feedbackData.strengths !== '특별한 강점이 없음' && 
+                             feedbackData.strengths !== '특별한 강점을 찾기 어렵습니다' && (
+                              <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-xl border-l-4 border-green-500 shadow-sm">
+                                <div className="flex items-start space-x-3">
+                                  <span className="text-2xl">✓</span>
+                                  <div className="flex-1">
+                                    <p className="text-sm font-bold text-green-900 mb-2">강점 (Strengths)</p>
+                                    <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{feedbackData.strengths}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* 약점 */}
+                            {feedbackData.weaknesses && feedbackData.weaknesses.trim() !== '' && (
+                              <div className="bg-gradient-to-r from-red-50 to-orange-50 p-4 rounded-xl border-l-4 border-red-500 shadow-sm">
+                                <div className="flex items-start space-x-3">
+                                  <span className="text-2xl">✗</span>
+                                  <div className="flex-1">
+                                    <p className="text-sm font-bold text-red-900 mb-2">약점 및 개선 필요 사항 (Weaknesses)</p>
+                                    <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{feedbackData.weaknesses}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* 개선 방향 */}
+                            {feedbackData.improvements && feedbackData.improvements.trim() !== '' && (
+                              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-xl border-l-4 border-blue-500 shadow-sm">
+                                <div className="flex items-start space-x-3">
+                                  <span className="text-2xl">💡</span>
+                                  <div className="flex-1">
+                                    <p className="text-sm font-bold text-blue-900 mb-2">구체적인 개선 가이드 (Actionable Advice)</p>
+                                    <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{feedbackData.improvements}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* 종합 평가 */}
+                            {feedbackData.summary && feedbackData.summary.trim() !== '' && (
+                              <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-xl border-l-4 border-purple-500 shadow-sm">
+                                <div className="flex items-start space-x-3">
+                                  <span className="text-2xl">📝</span>
+                                  <div className="flex-1">
+                                    <p className="text-sm font-bold text-purple-900 mb-2">종합 평가 (Overall Assessment)</p>
+                                    <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{feedbackData.summary}</p>
+                                  </div>
+                                </div>
+                              </div>
                             )}
                           </div>
-                        </div>
-                      </div>
-                    )}
+                        );
+                      } catch (e) {
+                        // JSON 파싱 실패 시 텍스트로 표시
+                        return (
+                          <div className="bg-gray-50 p-4 rounded-xl border-l-4 border-gray-400 shadow-sm">
+                            <div className="flex items-start space-x-3">
+                              <span className="text-gray-600 text-xl">💬</span>
+                              <div className="flex-1">
+                                <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+                                  {answer.feedback}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                    })()}
                   </div>
                 </div>
               </Card>

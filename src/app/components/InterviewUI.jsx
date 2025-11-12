@@ -321,7 +321,11 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
     setIsProcessing(true);
   };
 
-  // ===== 백그라운드에서 답변 평가 및 저장 (fire-and-forget) =====
+  // ===== [분석용] 백그라운드에서 답변 평가 및 저장 (fire-and-forget) =====
+  // 이 함수의 목적:
+  // 1. audioBlob을 Whisper API에 보내 정확한 transcript 추출
+  // 2. transcript(텍스트)를 LLM에 보내 내용 분석 및 피드백 생성
+  // 3. 평가 결과와 audioURL(재생용)을 Firestore에 저장
   const evaluateAnswerInBackground = async (
     audioBlob,
     transcript,
@@ -332,6 +336,10 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
     try {
       console.log('[백그라운드] 답변 평가 시작');
       
+      // FormData로 오디오와 텍스트를 API에 전송
+      // - audio: Whisper STT로 더 정확한 transcript를 얻기 위함 (선택적)
+      // - transcript: Browser SpeechRecognition 결과 (폴백용)
+      // - question: 질문 내용 (평가 기준으로 사용)
       const formData = new FormData();
       formData.append('audio', audioBlob, 'interview_answer.webm');
       formData.append('question', question);
@@ -353,17 +361,20 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
       const analysisResult = await response.json();
       console.log('[백그라운드] 답변 평가 완료:', analysisResult);
 
-      // ===== [진단 4] Firestore 저장 try-catch =====
+      // ===== [저장] Firestore에 결과 저장 =====
+      // 저장되는 데이터:
+      // - audioURL: 재생용 (사용자가 나중에 자신의 답변을 다시 들을 수 있음)
+      // - transcript: 분석용 (AI가 평가한 텍스트 내용)
+      // - feedback: AI 평가 결과 (strengths, weaknesses, improvements, summary)
       if (db) {
         const answerData = {
           userId: userId,
           interviewId: interviewId,
           questionId: `q${questionCount + 1}`,
           question: question,
-          transcript: transcript,
-          audioURL: audioURL,
-          feedback: analysisResult.contentFeedback?.advice || '',
-          score: analysisResult.contentFeedback?.score || null,
+          transcript: transcript, // [분석용] 실제 답변 내용 (AI 평가 대상)
+          audioURL: audioURL, // [재생용] 오디오 파일 URL (다시 듣기 전용)
+          feedback: JSON.stringify(analysisResult), // [결과] AI 평가 피드백
           duration: duration,
           timestamp: Timestamp.now(),
           createdAt: new Date().toISOString()
@@ -430,8 +441,10 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
         console.log('[진단 1] ✅ audioBlob 유효성 검사 통과');
       }
 
-      // ===== Firebase Storage 업로드 시작 =====
-      console.log('=== Firebase Storage 업로드 시작 ===');
+      // ===== [재생용] Firebase Storage 업로드 시작 =====
+      // 목적: 사용자가 나중에 자신의 답변을 다시 들을 수 있도록 오디오 파일 저장
+      // 이 audioURL은 평가/분석에 사용되지 않고, 순수하게 재생(Playback)용도입니다.
+      console.log('=== [재생용] Firebase Storage 업로드 시작 ===');
       
       let audioURL = null;
       
@@ -486,8 +499,14 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
         console.error('[Firebase] 💡 firebase/config.js에서 Storage 초기화를 확인하세요!');
       }
 
-      // ===== [최적화] 답변 평가를 백그라운드로 처리 (fire-and-forget) =====
-      // 백그라운드에서 답변 평가 및 Firestore 저장 (await 없이)
+      // ===== [분석용] 답변 평가를 백그라운드로 처리 (fire-and-forget) =====
+      // 목적: 텍스트 transcript를 기반으로 AI가 답변 내용을 평가
+      // 오디오 파일(audioBlob)은 Whisper STT로 더 정확한 transcript를 얻기 위해 전송하며,
+      // 실제 평가는 오디오가 아닌 '텍스트 내용'만을 기반으로 수행됩니다.
+      // 
+      // 데이터 흐름:
+      // 1. [저장용] audioBlob → Firebase Storage → audioURL (위에서 완료)
+      // 2. [분석용] audioBlob → Whisper API → 정확한 transcript → LLM 분석 (여기서 수행)
       evaluateAnswerInBackground(
         audioBlob,
         finalAnswer,
