@@ -20,24 +20,43 @@ export const maxDuration = 60; // 60초
 //       실제 평가는 오디오가 아닌 텍스트 내용을 기반으로 수행됩니다.
 
 export async function POST(request) {
+  // ===== [진단 API] API 엔트리 포인트 로깅 =====
+  const requestStartTime = Date.now();
+  console.log('=====================================');
+  console.log('[API] 📥 답변 평가 API 호출됨');
+  console.log('[API] - 요청 시작 시각:', new Date().toISOString());
+  console.log('[API] - 요청 ID:', requestStartTime);
+  console.log('=====================================');
+  
   try {
-    console.log('[DIAG] 답변 평가 API 호출 시작:', new Date().toISOString());
+    console.log('[API] 📦 FormData 파싱 시작...');
     const formData = await request.formData();
+    console.log('[API] ✅ FormData 파싱 완료');
+    
     const audioFile = formData.get('audio'); // [STT용] Whisper로 정확한 transcript 추출
     const question = formData.get('question'); // [평가 기준] 질문 내용
     const transcript = formData.get('transcript'); // [폴백용] Browser SpeechRecognition 결과
 
-    // [진단 2단계] 받은 데이터 확인
-    console.log('[진단 2단계 - 서버] 받은 오디오 파일:', {
+    // ===== [진단 API] 받은 데이터 상세 검증 =====
+    console.log('[API] 📋 수신된 데이터 검증:');
+    console.log('[API] - audioFile:', {
+      exists: !!audioFile,
       name: audioFile ? audioFile.name : '(없음)',
       type: audioFile ? audioFile.type : '(없음)',
-      size: audioFile ? audioFile.size : 0
+      size: audioFile ? audioFile.size : 0,
+      isValid: audioFile && audioFile.size > 0
     });
-    console.log('[진단 2단계 - 서버] 받은 transcript:', {
-      value: transcript,
+    console.log('[API] - transcript:', {
+      exists: !!transcript,
       type: typeof transcript,
       length: transcript ? transcript.length : 0,
-      preview: transcript ? transcript.substring(0, 100) : '(없음)'
+      isEmpty: !transcript || transcript.trim().length === 0,
+      preview: transcript ? transcript.substring(0, 100) + '...' : '(비어있음)'
+    });
+    console.log('[API] - question:', {
+      exists: !!question,
+      length: question ? question.length : 0,
+      preview: question ? question.substring(0, 50) + '...' : '(없음)'
     });
 
     if (!audioFile || !question) {
@@ -391,12 +410,63 @@ export async function POST(request) {
       }
     }
 
+    // ===== [진단 API] 최종 응답 반환 =====
+    const requestEndTime = Date.now();
+    const processingTime = requestEndTime - requestStartTime;
+    
+    console.log('=====================================');
+    console.log('[API] ✅✅✅ 답변 평가 완료! API 응답 반환 ✅✅✅');
+    console.log('[API] - 요청 ID:', requestStartTime);
+    console.log('[API] - 응답 시각:', new Date().toISOString());
+    console.log('[API] - 총 처리 시간:', processingTime, 'ms (', (processingTime / 1000).toFixed(2), '초)');
+    console.log('[API] - 반환 데이터:', {
+      hasStrengths: !!analysisResult.strengths,
+      hasWeaknesses: !!analysisResult.weaknesses,
+      hasImprovements: !!analysisResult.improvements,
+      hasSummary: !!analysisResult.summary
+    });
+    console.log('=====================================');
+    
     return NextResponse.json(analysisResult);
 
   } catch (error) {
-    console.error('Content evaluation error:', error);
+    // ===== [에러 핸들링 API] 최종 에러 처리 =====
+    const requestEndTime = Date.now();
+    const processingTime = requestEndTime - requestStartTime;
+    
+    console.error('=====================================');
+    console.error('[API] ❌❌❌ 답변 평가 API 에러 발생 ❌❌❌');
+    console.error('[API] - 요청 ID:', requestStartTime);
+    console.error('[API] - 에러 발생 시각:', new Date().toISOString());
+    console.error('[API] - 처리 시간 (실패까지):', processingTime, 'ms');
+    console.error('[API] - 에러 타입:', error.name);
+    console.error('[API] - 에러 메시지:', error.message);
+    console.error('[API] - 에러 스택:', error.stack);
+    console.error('[API] - 전체 에러 객체:', error);
+    
+    // 에러 원인 분석
+    if (error.message.includes('fetch') || error.message.includes('network')) {
+      console.error('[API] 🔍 원인: 네트워크 연결 문제');
+      console.error('[API] → 인터넷 연결 또는 외부 API 서버 상태 확인 필요');
+    } else if (error.message.includes('API') || error.message.includes('OpenAI')) {
+      console.error('[API] 🔍 원인: LLM API 관련 문제');
+      console.error('[API] → API 키, 요청 형식, 서비스 상태 확인 필요');
+    } else if (error.message.includes('JSON') || error.message.includes('parse')) {
+      console.error('[API] 🔍 원인: JSON 파싱 실패');
+      console.error('[API] → LLM 응답 형식이 올바르지 않음');
+    } else {
+      console.error('[API] 🔍 원인: 알 수 없는 서버 에러');
+      console.error('[API] → 위 스택 트레이스를 확인하세요');
+    }
+    
+    console.error('=====================================');
+    
     return NextResponse.json(
-      { error: '답변 평가 중 오류가 발생했습니다.' },
+      { 
+        error: '답변 평가 중 오류가 발생했습니다.',
+        details: error.message,
+        timestamp: new Date().toISOString()
+      },
       { status: 500 }
     );
   }

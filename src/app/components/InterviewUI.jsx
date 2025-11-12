@@ -334,12 +334,48 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
     duration
   ) => {
     try {
-      console.log('[백그라운드] 답변 평가 시작');
+      // ===== [진단 1단계] 함수 진입점 로깅 =====
+      console.log('========================================');
+      console.log('[백그라운드 평가] 함수 시작');
+      console.log('[백그라운드 평가] 시작 시각:', new Date().toISOString());
+      console.log('[백그라운드 평가] docId 생성 예정:', `${userId}_${interviewId}_q${questionCount + 1}`);
+      console.log('========================================');
+      
+      // ===== [진단 1단계] 전달받은 데이터 확인 =====
+      console.log('[백그라운드 평가] 📋 입력 데이터 검증:');
+      console.log('[백그라운드 평가] - audioBlob:', {
+        exists: !!audioBlob,
+        size: audioBlob ? audioBlob.size : 0,
+        type: audioBlob ? audioBlob.type : 'N/A'
+      });
+      console.log('[백그라운드 평가] - transcript:', {
+        exists: !!transcript,
+        isEmpty: !transcript || transcript.trim().length === 0,
+        length: transcript ? transcript.length : 0,
+        preview: transcript ? transcript.substring(0, 50) + '...' : '(비어있음)'
+      });
+      console.log('[백그라운드 평가] - question:', question ? question.substring(0, 50) + '...' : '(없음)');
+      console.log('[백그라운드 평가] - audioURL:', audioURL ? '존재함 ✓' : '없음 ✗');
+      console.log('[백그라운드 평가] - duration:', duration, '초');
+      
+      // ===== [에러 핸들링] 필수 데이터 검증 =====
+      if (!audioBlob || audioBlob.size === 0) {
+        throw new Error('❌ CRITICAL: audioBlob이 비어있거나 존재하지 않습니다!');
+      }
+      if (!transcript || transcript.trim().length === 0) {
+        console.warn('⚠️ WARNING: transcript가 비어있습니다. API가 실패할 수 있습니다.');
+      }
+      if (!question) {
+        throw new Error('❌ CRITICAL: question이 비어있습니다!');
+      }
+      
+      console.log('[백그라운드 평가] ✅ 입력 데이터 검증 통과');
       
       // FormData로 오디오와 텍스트를 API에 전송
       // - audio: Whisper STT로 더 정확한 transcript를 얻기 위함 (선택적)
       // - transcript: Browser SpeechRecognition 결과 (폴백용)
       // - question: 질문 내용 (평가 기준으로 사용)
+      console.log('[백그라운드 평가] 📦 FormData 생성 중...');
       const formData = new FormData();
       formData.append('audio', audioBlob, 'interview_answer.webm');
       formData.append('question', question);
@@ -348,66 +384,147 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
       if (duration) {
         formData.append('actualDuration', duration.toString());
       }
+      console.log('[백그라운드 평가] ✅ FormData 생성 완료');
 
+      // ===== [진단 1단계] LLM 호출 직전 로깅 =====
+      console.log('[백그라운드 평가] 🚀 LLM API 호출 시작...');
+      console.log('[백그라운드 평가] - API 엔드포인트: /api/interview/evaluate-delivery');
+      console.log('[백그라운드 평가] - 호출 시각:', new Date().toISOString());
+      
       const response = await fetch('/api/interview/evaluate-delivery', {
         method: 'POST',
         body: formData,
       });
 
+      // ===== [진단 1단계] LLM 호출 직후 로깅 =====
+      console.log('[백그라운드 평가] 📨 LLM API 응답 수신');
+      console.log('[백그라운드 평가] - 응답 상태:', response.status, response.statusText);
+      console.log('[백그라운드 평가] - 응답 시각:', new Date().toISOString());
+
       if (!response.ok) {
-        throw new Error('답변 평가 실패');
+        const errorText = await response.text();
+        console.error('[백그라운드 평가] ❌ API 응답 실패!');
+        console.error('[백그라운드 평가] - 상태 코드:', response.status);
+        console.error('[백그라운드 평가] - 에러 메시지:', errorText);
+        throw new Error(`답변 평가 API 실패 (${response.status}): ${errorText}`);
       }
 
       const analysisResult = await response.json();
-      console.log('[백그라운드] 답변 평가 완료:', analysisResult);
+      
+      // ===== [진단 1단계] LLM 응답 내용 로깅 =====
+      console.log('[백그라운드 평가] ✅ LLM 피드백 생성 완료!');
+      console.log('[백그라운드 평가] 📄 피드백 내용:', {
+        hasStrengths: !!analysisResult.strengths,
+        hasWeaknesses: !!analysisResult.weaknesses,
+        hasImprovements: !!analysisResult.improvements,
+        hasSummary: !!analysisResult.summary,
+        strengthsPreview: analysisResult.strengths ? analysisResult.strengths.substring(0, 50) + '...' : '(없음)',
+        weaknessesPreview: analysisResult.weaknesses ? analysisResult.weaknesses.substring(0, 50) + '...' : '(없음)'
+      });
 
       // ===== [저장] Firestore에 결과 저장 =====
       // 저장되는 데이터:
       // - audioURL: 재생용 (사용자가 나중에 자신의 답변을 다시 들을 수 있음)
       // - transcript: 분석용 (AI가 평가한 텍스트 내용)
       // - feedback: AI 평가 결과 (strengths, weaknesses, improvements, summary)
-      if (db) {
-        const answerData = {
-          userId: userId,
-          interviewId: interviewId,
-          questionId: `q${questionCount + 1}`,
-          question: question,
-          transcript: transcript, // [분석용] 실제 답변 내용 (AI 평가 대상)
-          audioURL: audioURL, // [재생용] 오디오 파일 URL (다시 듣기 전용)
-          feedback: JSON.stringify(analysisResult), // [결과] AI 평가 피드백
-          duration: duration,
-          timestamp: Timestamp.now(),
-          createdAt: new Date().toISOString()
-        };
-        
-        console.log('[진단 4] Firestore 저장 시작');
-        console.log('[진단 4] - 컬렉션:', 'interview_answers');
-        console.log('[진단 4] - userId:', userId);
-        console.log('[진단 4] - interviewId:', interviewId);
-        console.log('[진단 4] - 저장할 데이터 크기:', JSON.stringify(answerData).length, 'bytes');
-        
-        try {
-          const docRef = await addDoc(collection(db, 'interview_answers'), answerData);
-          console.log('[진단 4] ✅ Firestore 저장 성공!');
-          console.log('[진단 4] - 저장된 문서 ID:', docRef.id);
-          console.log('[진단 4] - 저장 경로:', 'interview_answers/' + docRef.id);
-        } catch (firestoreError) {
-          console.error('[진단 4] ❌ Firestore 저장 실패!');
-          console.error('[진단 4] - 에러 코드:', firestoreError.code);
-          console.error('[진단 4] - 에러 메시지:', firestoreError.message);
-          console.error('[진단 4] - 전체 에러:', firestoreError);
-          console.error('[진단 4] 💡 Firestore Rules에서 allow create/write 권한을 확인하세요!');
-          console.error('[진단 4] 💡 Firestore가 활성화되어 있는지 확인하세요!');
-          throw firestoreError; // 에러를 다시 던져서 백그라운드 catch에서 처리
-        }
-      } else {
-        console.error('[진단 4] ❌ Firestore DB가 초기화되지 않았습니다!');
-        console.error('[진단 4] 💡 firebase/config.js에서 Firestore 초기화를 확인하세요!');
+      
+      console.log('[백그라운드 평가] 💾 Firestore 저장 준비 중...');
+      
+      if (!db) {
+        const errorMsg = '❌ FATAL: Firestore DB가 초기화되지 않았습니다!';
+        console.error('[백그라운드 평가]', errorMsg);
+        console.error('[백그라운드 평가] 💡 firebase/config.js에서 Firestore 초기화를 확인하세요!');
+        throw new Error(errorMsg);
       }
+      
+      const answerData = {
+        userId: userId,
+        interviewId: interviewId,
+        questionId: `q${questionCount + 1}`,
+        question: question,
+        transcript: transcript, // [분석용] 실제 답변 내용 (AI 평가 대상)
+        audioURL: audioURL, // [재생용] 오디오 파일 URL (다시 듣기 전용)
+        feedback: JSON.stringify(analysisResult), // [결과] AI 평가 피드백
+        duration: duration,
+        timestamp: Timestamp.now(),
+        createdAt: new Date().toISOString()
+      };
+      
+      // ===== [진단 1단계] DB 업데이트 직전 로깅 =====
+      console.log('[백그라운드 평가] 📝 Firestore 저장 시작');
+      console.log('[백그라운드 평가] - 컬렉션:', 'interview_answers');
+      console.log('[백그라운드 평가] - userId:', userId);
+      console.log('[백그라운드 평가] - interviewId:', interviewId);
+      console.log('[백그라운드 평가] - questionId:', `q${questionCount + 1}`);
+      console.log('[백그라운드 평가] - 저장할 데이터 크기:', JSON.stringify(answerData).length, 'bytes');
+      console.log('[백그라운드 평가] - feedback 필드 포함:', !!answerData.feedback);
+      console.log('[백그라운드 평가] - 저장 시각:', new Date().toISOString());
+      
+      // ===== [에러 핸들링 2단계] Firestore 저장 try-catch =====
+      try {
+        const docRef = await addDoc(collection(db, 'interview_answers'), answerData);
+        
+        // ===== [진단 1단계] DB 업데이트 성공 로깅 =====
+        console.log('========================================');
+        console.log('[백그라운드 평가] ✅✅✅ Firestore 저장 성공! ✅✅✅');
+        console.log('[백그라운드 평가] - 저장된 문서 ID:', docRef.id);
+        console.log('[백그라운드 평가] - 저장 경로: interview_answers/' + docRef.id);
+        console.log('[백그라운드 평가] - 완료 시각:', new Date().toISOString());
+        console.log('[백그라운드 평가] 🎉 백그라운드 평가 전체 프로세스 완료!');
+        console.log('========================================');
+        
+      } catch (firestoreError) {
+        // ===== [에러 핸들링 2단계] Firestore 에러 상세 로깅 =====
+        console.error('========================================');
+        console.error('[백그라운드 평가] ❌❌❌ Firestore 저장 실패! ❌❌❌');
+        console.error('[백그라운드 평가] - 에러 코드:', firestoreError.code);
+        console.error('[백그라운드 평가] - 에러 메시지:', firestoreError.message);
+        console.error('[백그라운드 평가] - 에러 이름:', firestoreError.name);
+        console.error('[백그라운드 평가] - 전체 에러 객체:', firestoreError);
+        console.error('[백그라운드 평가] - 에러 스택:', firestoreError.stack);
+        console.error('========================================');
+        console.error('[백그라운드 평가] 💡 해결 방법:');
+        console.error('[백그라운드 평가] 1. Firebase Console → Firestore Database → Rules');
+        console.error('[백그라운드 평가] 2. "allow create, write" 권한이 있는지 확인');
+        console.error('[백그라운드 평가] 3. Firestore가 활성화되어 있는지 확인');
+        console.error('[백그라운드 평가] 4. 네트워크 연결 상태 확인');
+        console.error('========================================');
+        throw firestoreError; // 에러를 다시 던져서 외부 catch에서 처리
+      }
+      
     } catch (error) {
-      console.error('[백그라운드] 평가 및 저장 오류:', error);
-      console.error('[백그라운드] 전체 스택:', error.stack);
-      throw error;
+      // ===== [에러 핸들링 2단계] 최종 에러 핸들링 =====
+      console.error('========================================');
+      console.error('[백그라운드 평가] 💥💥💥 FATAL ERROR 💥💥💥');
+      console.error('[백그라운드 평가] 백그라운드 평가 프로세스 중 치명적 오류 발생!');
+      console.error('[백그라운드 평가] - 에러 타입:', error.name);
+      console.error('[백그라운드 평가] - 에러 메시지:', error.message);
+      console.error('[백그라운드 평가] - 전체 에러:', error);
+      console.error('[백그라운드 평가] - 에러 스택:', error.stack);
+      console.error('[백그라운드 평가] - 발생 시각:', new Date().toISOString());
+      
+      // 에러 원인 분석
+      if (error.message.includes('audioBlob')) {
+        console.error('[백그라운드 평가] 🔍 원인: 오디오 데이터 문제');
+        console.error('[백그라운드 평가] → 마이크 권한 또는 녹음 실패 확인 필요');
+      } else if (error.message.includes('question')) {
+        console.error('[백그라운드 평가] 🔍 원인: 질문 데이터 누락');
+        console.error('[백그라운드 평가] → 질문 생성 로직 확인 필요');
+      } else if (error.message.includes('API')) {
+        console.error('[백그라운드 평가] 🔍 원인: LLM API 호출 실패');
+        console.error('[백그라운드 평가] → API 키, 네트워크, 서버 상태 확인 필요');
+      } else if (error.message.includes('Firestore') || error.code) {
+        console.error('[백그라운드 평가] 🔍 원인: Firestore 저장 실패');
+        console.error('[백그라운드 평가] → Firestore 권한, 규칙, 연결 상태 확인 필요');
+      } else {
+        console.error('[백그라운드 평가] 🔍 원인: 알 수 없는 에러');
+        console.error('[백그라운드 평가] → 위 스택 트레이스를 확인하세요');
+      }
+      
+      console.error('========================================');
+      
+      // 에러를 다시 던지지 않고 여기서 멈춤 (사용자 플로우에 영향 없도록)
+      // throw error; (주석 처리 - 백그라운드 작업 실패가 사용자에게 영향 없도록)
     }
   };
 
@@ -507,6 +624,12 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
       // 데이터 흐름:
       // 1. [저장용] audioBlob → Firebase Storage → audioURL (위에서 완료)
       // 2. [분석용] audioBlob → Whisper API → 정확한 transcript → LLM 분석 (여기서 수행)
+      
+      // ===== [3단계] 비동기 실행 보장 패턴 =====
+      // 주의: 이 함수는 클라이언트 측에서 실행되므로 Vercel의 waitUntil이 필요하지 않습니다.
+      // 하지만 에러가 발생해도 사용자 플로우에 영향을 주지 않도록 .catch()를 추가합니다.
+      console.log('[메인 플로우] 백그라운드 평가 함수 호출 시작');
+      
       evaluateAnswerInBackground(
         audioBlob,
         finalAnswer,
@@ -514,9 +637,20 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
         audioURL,
         actualDurationInSeconds
       ).catch(error => {
-        console.error('[백그라운드] 답변 평가 실패:', error);
+        // ===== [에러 핸들링 3단계] 백그라운드 작업 실패 시 처리 =====
+        console.error('========================================');
+        console.error('[메인 플로우] ⚠️ 백그라운드 평가 프로세스 실패');
+        console.error('[메인 플로우] 하지만 사용자 플로우는 계속 진행됩니다.');
+        console.error('[메인 플로우] - 에러:', error);
+        console.error('[메인 플로우] - 에러 메시지:', error.message);
+        console.error('[메인 플로우] - 발생 시각:', new Date().toISOString());
+        console.error('========================================');
+        
         // 에러가 발생해도 사용자 플로우에는 영향 없음
+        // 사용자는 다음 질문으로 계속 진행하고, 결과 페이지에서 "분석 중..." 상태를 보게 됨
       });
+      
+      console.log('[메인 플로우] 백그라운드 평가 함수 호출 완료 (백그라운드 실행 중)');
 
       // 다음 질문 요청 또는 면접 완료
       const nextQuestionCount = questionCount + 1;
