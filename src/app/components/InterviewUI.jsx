@@ -39,6 +39,25 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
       window.speechSynthesis.cancel();
     }
 
+    // ===== [타입 안전성] 방어 코드 추가 =====
+    // text가 객체인 경우 (예: { question: "...", time_limit: 60 })
+    if (typeof text === 'object' && text !== null) {
+      text = text.question || '';
+      console.warn('[TTS] ⚠️ speakQuestion에 객체가 전달됨, question 필드 추출:', text);
+    }
+    
+    // text가 문자열이 아닌 경우 (null, undefined, 숫자 등)
+    if (typeof text !== 'string') {
+      text = String(text || '');
+      console.warn('[TTS] ⚠️ speakQuestion에 비문자열 값 전달됨, 문자열로 변환:', text);
+    }
+    
+    // 빈 문자열이면 TTS 실행하지 않음
+    if (!text || text.trim().length === 0) {
+      console.warn('[TTS] ⚠️ 빈 텍스트, TTS 실행하지 않음');
+      return;
+    }
+
     const processedText = text
       .replace(/\./g, '. ')
       .replace(/,/g, ', ')
@@ -822,7 +841,7 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
             
             // 스트리밍 완료 후 TTS로 질문 읽어주기
             setTimeout(() => {
-              speakQuestion(questionData);
+              speakQuestion(questionData.question);
             }, 500); // 0.5초 딜레이 후 TTS 시작
           } else {
             throw new Error('질문 파싱 실패');
