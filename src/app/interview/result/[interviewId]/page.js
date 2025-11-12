@@ -27,23 +27,80 @@ export default function InterviewResultPage() {
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    // ===== [디버깅 1단계] ID 값 확인 =====
+    // ===== [진단] 상세 로깅 추가 =====
     console.log('========================================');
     console.log('[결과 페이지] useEffect 실행');
-    console.log('[결과 페이지] - user 존재:', !!user);
-    console.log('[결과 페이지] - user.uid:', user?.uid || '(undefined)');
-    console.log('[결과 페이지] - interviewId:', interviewId || '(undefined)');
-    console.log('[결과 페이지] - 데이터 타입:', {
-      userType: typeof user,
-      uidType: typeof user?.uid,
-      interviewIdType: typeof interviewId
-    });
+    console.log('[결과 페이지] 🕐 현재 시각:', new Date().toISOString());
     console.log('========================================');
     
-    if (!user || !interviewId) {
-      console.warn('[결과 페이지] ⚠️ user 또는 interviewId가 없어서 데이터 조회를 건너뜁니다.');
+    // ===== [진단 1단계] Auth 상태 확인 =====
+    console.log('[진단] Auth 상태:');
+    console.log('[진단] - Auth Loading:', authLoading);
+    console.log('[진단] - Auth User:', user ? '존재함 ✓' : '없음 ✗');
+    console.log('[진단] - Auth User UID:', user?.uid || '(undefined)');
+    console.log('[진단] - Auth User Email:', user?.email || '(undefined)');
+    
+    // ===== [진단 2단계] URL 파라미터 확인 =====
+    console.log('[진단] URL 파라미터:');
+    console.log('[진단] - params 객체:', params);
+    console.log('[진단] - Extracted interviewId:', interviewId || '(undefined)');
+    console.log('[진단] - interviewId 타입:', typeof interviewId);
+    console.log('[진단] - interviewId 길이:', interviewId?.length || 0);
+    console.log('[진단] - 현재 URL:', typeof window !== 'undefined' ? window.location.href : 'SSR');
+    
+    // ===== [진단 3단계] 데이터 타입 확인 =====
+    console.log('[진단] 데이터 타입:');
+    console.log('[진단] - userType:', typeof user);
+    console.log('[진단] - uidType:', typeof user?.uid);
+    console.log('[진단] - interviewIdType:', typeof interviewId);
+    console.log('========================================');
+    
+    // ===== [수정] Auth 로딩 대기 처리 =====
+    if (authLoading) {
+      console.log('[결과 페이지] ⏳ Auth 로딩 중... 대기합니다.');
+      console.log('[결과 페이지] 💡 로딩이 끝나면 자동으로 데이터를 조회합니다.');
       return;
     }
+    
+    // ===== [진단] user 없음 체크 =====
+    if (!user) {
+      console.warn('========================================');
+      console.warn('[결과 페이지] ⚠️⚠️⚠️ user가 없습니다! ⚠️⚠️⚠️');
+      console.warn('[결과 페이지] 가능한 원인:');
+      console.warn('[결과 페이지] 1. 로그인하지 않음');
+      console.warn('[결과 페이지] 2. 세션 만료');
+      console.warn('[결과 페이지] 3. Firebase Auth 초기화 실패');
+      console.warn('[결과 페이지] 💡 메인 페이지로 리다이렉트됩니다.');
+      console.warn('========================================');
+      return;
+    }
+    
+    // ===== [진단] interviewId 없음 체크 =====
+    if (!interviewId) {
+      console.error('========================================');
+      console.error('[결과 페이지] ❌❌❌ interviewId가 없습니다! ❌❌❌');
+      console.error('[결과 페이지] 가능한 원인:');
+      console.error('[결과 페이지] 1. URL 파라미터 누락: /interview/result/[없음]');
+      console.error('[결과 페이지] 2. 잘못된 리다이렉트: router.push 확인 필요');
+      console.error('[결과 페이지] 3. 동적 라우트 설정 오류');
+      console.error('[결과 페이지] 💡 현재 URL을 확인하세요!');
+      if (typeof window !== 'undefined') {
+        console.error('[결과 페이지] 📍 현재 URL:', window.location.href);
+        console.error('[결과 페이지] 📍 pathname:', window.location.pathname);
+      }
+      console.error('========================================');
+      setError('면접 ID를 찾을 수 없습니다. URL을 확인해주세요.');
+      setLoading(false);
+      return;
+    }
+    
+    // ===== [성공] 모든 조건 충족 =====
+    console.log('========================================');
+    console.log('[결과 페이지] ✅✅✅ 모든 조건 충족! ✅✅✅');
+    console.log('[결과 페이지] - user.uid:', user.uid);
+    console.log('[결과 페이지] - interviewId:', interviewId);
+    console.log('[결과 페이지] 🚀 Firestore 데이터 조회를 시작합니다!');
+    console.log('========================================');
 
     // ===== [디버깅 1단계] Firestore 경로 확인 =====
     console.log('[결과 페이지] 🔍 Firestore 데이터 조회 시작');
@@ -168,7 +225,7 @@ export default function InterviewResultPage() {
       setError('데이터 조회 설정 중 오류가 발생했습니다.');
       setLoading(false);
     }
-  }, [user, interviewId, router]);
+  }, [user, authLoading, interviewId, router]); // authLoading 추가: 로딩 완료 후 재실행
 
   if (authLoading || loading) {
     return (

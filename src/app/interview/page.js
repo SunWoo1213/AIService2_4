@@ -199,7 +199,15 @@ export default function InterviewPage() {
       console.log('========================================');
       
       // 결과 페이지로 리다이렉트
-      console.log('[면접 완료] 🚀 결과 페이지로 리다이렉트:', `/interview/result/${interviewId}`);
+      console.log('========================================');
+      console.log('[면접 완료] 🚀 결과 페이지로 리다이렉트 준비');
+      console.log('[면접 완료] - 리다이렉트 URL:', `/interview/result/${interviewId}`);
+      console.log('[면접 완료] - interviewId 확인:', interviewId);
+      console.log('[면접 완료] - interviewId 타입:', typeof interviewId);
+      console.log('[면접 완료] - interviewId 길이:', interviewId?.length || 0);
+      console.log('[면접 완료] 💡 결과 페이지에서 이 ID로 데이터를 조회할 것입니다.');
+      console.log('========================================');
+      
       router.push(`/interview/result/${interviewId}`);
     } catch (error) {
       console.error('========================================');
@@ -217,7 +225,13 @@ export default function InterviewPage() {
       console.error('========================================');
       
       // 에러가 발생해도 결과 페이지로 이동 (면접 답변은 이미 저장됨)
+      console.warn('========================================');
       console.warn('[면접 완료] ⚠️ feedbacks 저장 실패했지만 결과 페이지로 이동합니다.');
+      console.warn('[면접 완료] - 리다이렉트 URL:', `/interview/result/${interviewId}`);
+      console.warn('[면접 완료] - interviewId:', interviewId);
+      console.warn('[면접 완료] 💡 면접 답변은 이미 interview_answers에 저장되어 있습니다.');
+      console.warn('========================================');
+      
       router.push(`/interview/result/${interviewId}`);
     }
   };
