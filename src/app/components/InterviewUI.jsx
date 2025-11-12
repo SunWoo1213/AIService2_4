@@ -494,23 +494,26 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
         throw new Error(errorMsg);
       }
       
-      // ===== [세트 기반] feedback 필드는 null (종합 피드백만 생성) =====
+      // ===== [3개 컬렉션 분리] answer_evaluations 데이터 구조 =====
       const answerData = {
         userId: userId,
         interviewId: interviewId,
         questionId: `q${questionCount + 1}`,
+        questionIndex: questionCount + 1, // 💡 정렬용 필드 추가 (1, 2, 3, 4, 5)
         question: question,
         transcript: transcript, // [분석용] 실제 답변 내용 (종합 평가에 사용)
         audioURL: audioURL, // [재생용] 오디오 파일 URL (다시 듣기 전용)
+        audioPath: `recordings/${userId}/${interviewId}/q${questionCount + 1}_${Date.now()}.webm`,
         feedback: null, // [세트 기반] 개별 피드백 없음
         duration: duration,
         timestamp: Timestamp.now(),
         createdAt: new Date().toISOString()
       };
       
-      // ===== [진단 1단계] DB 업데이트 직전 로깅 =====
+      // ===== [3개 컬렉션 분리] answer_evaluations 저장 =====
       console.log('[백그라운드 평가] 📝 Firestore 저장 시작');
-      console.log('[백그라운드 평가] - 컬렉션:', 'interview_answers');
+      console.log('[백그라운드 평가] - 컬렉션:', 'answer_evaluations');
+      console.log('[백그라운드 평가] 💡 변경사항: interview_answers → answer_evaluations 컬렉션 사용');
       console.log('[백그라운드 평가] - userId:', userId);
       console.log('[백그라운드 평가] - interviewId:', interviewId);
       console.log('[백그라운드 평가] - questionId:', `q${questionCount + 1}`);
@@ -524,7 +527,7 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
         console.log('[백그라운드 평가] 🔍 저장 직전 - 기존 데이터 개수 확인 중...');
         try {
           const checkQuery = query(
-            collection(db, 'interview_answers'),
+            collection(db, 'answer_evaluations'),
             where('userId', '==', userId),
             where('interviewId', '==', interviewId)
           );
@@ -536,13 +539,13 @@ export default function InterviewUI({ userId, initialQuestion, jobKeywords, resu
         }
         
         console.log('[백그라운드 평가] 💾 addDoc 실행 중...');
-        const docRef = await addDoc(collection(db, 'interview_answers'), answerData);
+        const docRef = await addDoc(collection(db, 'answer_evaluations'), answerData);
         
         // ===== [진단 1단계] DB 업데이트 성공 로깅 =====
         console.log('========================================');
         console.log('[백그라운드 평가] ✅✅✅ Firestore 저장 성공! ✅✅✅');
         console.log('[백그라운드 평가] - 저장된 문서 ID:', docRef.id);
-        console.log('[백그라운드 평가] - 저장 경로: interview_answers/' + docRef.id);
+        console.log('[백그라운드 평가] - 저장 경로: answer_evaluations/' + docRef.id);
         console.log('[백그라운드 평가] - 완료 시각:', new Date().toISOString());
         console.log('[백그라운드 평가] 🎉 백그라운드 평가 전체 프로세스 완료!');
         console.log('========================================');

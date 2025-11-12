@@ -111,17 +111,18 @@ export default function InterviewResultPage() {
     console.log('[결과 페이지] - 컬렉션 경로: interview_answers');
     console.log('[결과 페이지] - 쿼리 조건 1: userId == ' + user.uid);
     console.log('[결과 페이지] - 쿼리 조건 2: interviewId == ' + interviewId);
-    console.log('[결과 페이지] - 정렬 조건: timestamp asc');
+    console.log('[결과 페이지] - 정렬 조건: questionIndex asc');
+    console.log('[결과 페이지] 💡 변경사항: interview_answers → answer_evaluations 컬렉션 사용');
 
-    // Firestore에서 해당 interviewId의 모든 답변을 실시간으로 구독
-    const answersRef = collection(db, 'interview_answers');
+    // [3개 컬렉션 분리] answer_evaluations에서 개별 답변 조회
+    const answersRef = collection(db, 'answer_evaluations');
     
     try {
       const q = query(
         answersRef,
         where('userId', '==', user.uid),
         where('interviewId', '==', interviewId),
-        orderBy('timestamp', 'asc')
+        orderBy('questionIndex', 'asc') // 💡 questionIndex로 정렬 (1, 2, 3, 4, 5)
       );
 
       console.log('[결과 페이지] ✅ 쿼리 생성 성공, onSnapshot 구독 시작...');
@@ -219,40 +220,40 @@ export default function InterviewResultPage() {
       console.log('[3단계 확인] - 컬렉션: feedbacks');
       console.log('[3단계 확인] - 조건: userId == ' + user.uid);
       console.log('[3단계 확인] - 조건: interviewId == ' + interviewId);
-      console.log('[3단계 확인] - 조건: type == interview');
       console.log('========================================');
+      console.log('[3단계 확인] 💡 변경사항: feedbacks → interview_reports 컬렉션 사용');
       
-      const feedbacksRef = collection(db, 'feedbacks');
-      const feedbackQuery = query(
-        feedbacksRef,
+      // [3개 컬렉션 분리] interview_reports에서 종합 피드백 조회
+      const reportsRef = collection(db, 'interview_reports');
+      const reportQuery = query(
+        reportsRef,
         where('userId', '==', user.uid),
-        where('interviewId', '==', interviewId),
-        where('type', '==', 'interview')
+        where('interviewId', '==', interviewId)
       );
       
-      const unsubscribeFeedback = onSnapshot(
-        feedbackQuery,
-        (feedbackSnapshot) => {
+      const unsubscribeReport = onSnapshot(
+        reportQuery,
+        (reportSnapshot) => {
           console.log('========================================');
-          console.log('[3단계 확인] 📥 feedbacks 스냅샷 수신');
-          console.log('[3단계 확인] - 스냅샷 비어있음:', feedbackSnapshot.empty);
-          console.log('[3단계 확인] - 문서 개수:', feedbackSnapshot.size);
+          console.log('[3단계 확인] 📥 interview_reports 스냅샷 수신');
+          console.log('[3단계 확인] - 스냅샷 비어있음:', reportSnapshot.empty);
+          console.log('[3단계 확인] - 문서 개수:', reportSnapshot.size);
           
-          if (!feedbackSnapshot.empty) {
-            const feedbackDoc = feedbackSnapshot.docs[0];
-            const feedbackData = feedbackDoc.data();
+          if (!reportSnapshot.empty) {
+            const reportDoc = reportSnapshot.docs[0];
+            const reportData = reportDoc.data();
             
             console.log('[3단계 확인] ✅ 종합 피드백 문서 발견!');
-            console.log('[3단계 확인] - 문서 ID:', feedbackDoc.id);
-            console.log('[3단계 확인] - 전체 데이터:', JSON.stringify(feedbackData, null, 2));
-            console.log('[3단계 확인] - overallFeedback 필드 존재:', !!feedbackData.overallFeedback);
-            console.log('[3단계 확인] - overallFeedback 타입:', typeof feedbackData.overallFeedback);
+            console.log('[3단계 확인] - 문서 ID:', reportDoc.id);
+            console.log('[3단계 확인] - 전체 데이터:', JSON.stringify(reportData, null, 2));
+            console.log('[3단계 확인] - overallFeedback 필드 존재:', !!reportData.overallFeedback);
+            console.log('[3단계 확인] - overallFeedback 타입:', typeof reportData.overallFeedback);
             
-            if (feedbackData.overallFeedback) {
+            if (reportData.overallFeedback) {
               console.log('[3단계 확인] 🎉🎉🎉 종합 피드백 로드 완료! 🎉🎉🎉');
-              console.log('[3단계 확인] - 필드:', Object.keys(feedbackData.overallFeedback));
-              console.log('[3단계 확인] - strengths 미리보기:', feedbackData.overallFeedback.strengths?.substring(0, 50) + '...');
-              setOverallFeedback(feedbackData.overallFeedback);
+              console.log('[3단계 확인] - 필드:', Object.keys(reportData.overallFeedback));
+              console.log('[3단계 확인] - strengths 미리보기:', reportData.overallFeedback.strengths?.substring(0, 50) + '...');
+              setOverallFeedback(reportData.overallFeedback);
             } else {
               console.log('[3단계 확인] ⏳ 종합 피드백 아직 생성 안됨 (null)');
               console.log('[3단계 확인] 💡 백그라운드에서 생성 중일 수 있습니다. 잠시 기다리세요.');
@@ -260,11 +261,10 @@ export default function InterviewResultPage() {
             }
           } else {
             console.warn('========================================');
-            console.warn('[3단계 확인] ⚠️⚠️⚠️ feedbacks 문서를 찾을 수 없습니다! ⚠️⚠️⚠️');
+            console.warn('[3단계 확인] ⚠️⚠️⚠️ interview_reports 문서를 찾을 수 없습니다! ⚠️⚠️⚠️');
             console.warn('[3단계 확인] 가능한 원인:');
-            console.warn('[3단계 확인] 1. handleInterviewComplete에서 feedbacks 저장 안됨');
+            console.warn('[3단계 확인] 1. handleInterviewComplete에서 interview_reports 저장 안됨');
             console.warn('[3단계 확인] 2. interviewId 불일치:', interviewId);
-            console.warn('[3단계 확인] 3. type 필드 누락');
             console.warn('[3단계 확인] 💡 interview/page.js의 handleInterviewComplete 로그 확인하세요!');
             console.warn('========================================');
           }
@@ -272,12 +272,12 @@ export default function InterviewResultPage() {
           
           setFeedbackLoading(false);
         },
-        (feedbackError) => {
+        (reportError) => {
           console.error('========================================');
-          console.error('[3단계 확인] ❌ feedbacks 조회 에러!');
-          console.error('[3단계 확인] - 에러:', feedbackError);
-          console.error('[3단계 확인] - error.code:', feedbackError.code);
-          console.error('[3단계 확인] - error.message:', feedbackError.message);
+          console.error('[3단계 확인] ❌ interview_reports 조회 에러!');
+          console.error('[3단계 확인] - 에러:', reportError);
+          console.error('[3단계 확인] - error.code:', reportError.code);
+          console.error('[3단계 확인] - error.message:', reportError.message);
           console.error('========================================');
           setFeedbackLoading(false);
         }
@@ -287,7 +287,7 @@ export default function InterviewResultPage() {
       return () => {
         console.log('[결과 페이지] 🔌 onSnapshot 구독 해제');
         unsubscribe();
-        unsubscribeFeedback();
+        unsubscribeReport();
       };
     } catch (queryError) {
       // Query 생성 중 에러 (인덱스 관련 에러가 여기서 발생할 수 있음)
