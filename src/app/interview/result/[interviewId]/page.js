@@ -16,8 +16,9 @@ export default function InterviewResultPage() {
   const params = useParams();
   const interviewId = params.interviewId;
   
-  // ===== [단일 문서] 전체 면접 결과 State =====
-  const [interviewResult, setInterviewResult] = useState(null);
+  // ===== [5대 컬렉션] 면접 답변 + 평가 State =====
+  const [interviewSession, setInterviewSession] = useState(null); // 답변 데이터
+  const [evaluation, setEvaluation] = useState(null); // 평가 데이터
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -32,7 +33,7 @@ export default function InterviewResultPage() {
     console.log('[결과 페이지] 데이터 조회 시작');
     console.log('[결과 페이지] - interviewId:', interviewId);
     console.log('[결과 페이지] - userId:', user?.uid);
-    console.log('[결과 페이지] 💡 단일 문서 조회 모드!');
+    console.log('[결과 페이지] 💡 5대 컬렉션 구조: interview_sessions + interview_evaluations');
     console.log('========================================');
     
     if (authLoading) {
@@ -52,43 +53,30 @@ export default function InterviewResultPage() {
       return;
     }
     
-    // ===== [단일 문서 조회] interview_results/{interviewId} =====
-    console.log('[결과 페이지] 🔍 interview_results 조회 시작');
-    console.log('[결과 페이지] - 문서 경로: interview_results/' + interviewId);
+    // ===== [5대 컬렉션] interview_sessions 조회 (답변 데이터) =====
+    console.log('[결과 페이지] 🔍 1. interview_sessions 조회 시작');
+    console.log('[결과 페이지] - 문서 경로: interview_sessions/' + interviewId);
     
-    const docRef = doc(db, 'interview_results', interviewId);
+    const sessionRef = doc(db, 'interview_sessions', interviewId);
     
-    const unsubscribe = onSnapshot(
-      docRef,
-      (docSnapshot) => {
+    const unsubscribeSession = onSnapshot(
+      sessionRef,
+      (sessionSnapshot) => {
         console.log('========================================');
-        console.log('[결과 페이지] 📥 onSnapshot 콜백 실행');
+        console.log('[결과 페이지] 📥 interview_sessions 콜백 실행');
         console.log('[결과 페이지] - 시각:', new Date().toISOString());
-        console.log('[결과 페이지] - doc.exists():', docSnapshot.exists());
+        console.log('[결과 페이지] - doc.exists():', sessionSnapshot.exists());
         
-        if (docSnapshot.exists()) {
-          const data = docSnapshot.data();
-          console.log('[결과 페이지] ✅ 데이터 조회 성공!');
+        if (sessionSnapshot.exists()) {
+          const data = sessionSnapshot.data();
+          console.log('[결과 페이지] ✅ interview_sessions 조회 성공!');
           console.log('[결과 페이지] - 질문 개수:', data.questions?.length || 0);
-          console.log('[결과 페이지] - overallReview 존재:', !!data.overallReview);
-          console.log('[결과 페이지] - overallReview 타입:', typeof data.overallReview);
-          console.log('[결과 페이지] - overallFeedback 존재 (구버전):', !!data.overallFeedback);
-          console.log('[결과 페이지] - 데이터 키:', Object.keys(data).join(', '));
+          console.log('[결과 페이지] - status:', data.status);
           
-          // ===== [진단] 각 질문의 aiFeedback 필드 확인 =====
-          if (data.questions && data.questions.length > 0) {
-            console.log('[결과 페이지] 📋 각 질문의 aiFeedback 상태:');
-            data.questions.forEach((q, idx) => {
-              console.log(`  - 질문 ${idx + 1} (${q.id}):`, 
-                q.aiFeedback ? `✅ 있음 (${typeof q.aiFeedback})` : '❌ 없음');
-            });
-          }
-          
-          setInterviewResult(data);
+          setInterviewSession(data);
           setError(null);
         } else {
-          console.warn('[결과 페이지] ⚠️ 문서가 존재하지 않습니다!');
-          console.warn('[결과 페이지] 💡 면접 완료 후 저장이 제대로 되었는지 확인하세요.');
+          console.warn('[결과 페이지] ⚠️ interview_sessions 문서가 없습니다!');
           setError('면접 결과를 찾을 수 없습니다.');
         }
         
@@ -97,7 +85,7 @@ export default function InterviewResultPage() {
       },
       (err) => {
         console.error('========================================');
-        console.error('[결과 페이지] ❌ Firestore 에러!');
+        console.error('[결과 페이지] ❌ interview_sessions Firestore 에러!');
         console.error('[결과 페이지] - 에러 코드:', err.code);
         console.error('[결과 페이지] - 에러 메시지:', err.message);
         console.error('========================================');
@@ -106,13 +94,57 @@ export default function InterviewResultPage() {
         setLoading(false);
       }
     );
+    
+    // ===== [5대 컬렉션] interview_evaluations 조회 (평가 데이터) =====
+    console.log('[결과 페이지] 🔍 2. interview_evaluations 조회 시작');
+    const evaluationId = `eval_${interviewId}`;
+    console.log('[결과 페이지] - 문서 경로: interview_evaluations/' + evaluationId);
+    
+    const evaluationRef = doc(db, 'interview_evaluations', evaluationId);
+    
+    const unsubscribeEvaluation = onSnapshot(
+      evaluationRef,
+      (evalSnapshot) => {
+        console.log('========================================');
+        console.log('[결과 페이지] 📥 interview_evaluations 콜백 실행');
+        console.log('[결과 페이지] - 시각:', new Date().toISOString());
+        console.log('[결과 페이지] - doc.exists():', evalSnapshot.exists());
+        
+        if (evalSnapshot.exists()) {
+          const data = evalSnapshot.data();
+          console.log('[결과 페이지] ✅ interview_evaluations 조회 성공!');
+          console.log('[결과 페이지] - overallReview 존재:', !!data.overallReview);
+          console.log('[결과 페이지] - questionEvaluations 개수:', data.questionEvaluations?.length || 0);
+          
+          setEvaluation(data);
+        } else {
+          console.warn('[결과 페이지] ⚠️ interview_evaluations 문서가 아직 없습니다.');
+          console.warn('[결과 페이지] 💡 AI가 평가를 생성 중일 수 있습니다.');
+          setEvaluation(null);
+        }
+        
+        console.log('========================================');
+      },
+      (err) => {
+        console.error('========================================');
+        console.error('[결과 페이지] ❌ interview_evaluations Firestore 에러!');
+        console.error('[결과 페이지] - 에러 코드:', err.code);
+        console.error('[결과 페이지] - 에러 메시지:', err.message);
+        console.error('========================================');
+        
+        // 평가 에러는 치명적이지 않음 (아직 생성 중일 수 있음)
+        setEvaluation(null);
+      }
+    );
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeSession();
+      unsubscribeEvaluation();
+    };
   }, [user, authLoading, interviewId, router]);
 
   // ===== [피드백 로딩 상태 확인] =====
-  const isFeedbackLoading = !interviewResult?.overallReview || 
-    interviewResult?.questions?.some(q => !q.aiFeedback);
+  const isFeedbackLoading = !evaluation;
 
   if (authLoading || loading) {
     return (
@@ -147,7 +179,7 @@ export default function InterviewResultPage() {
     );
   }
 
-  if (!interviewResult) {
+  if (!interviewSession) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loading size="lg" text="데이터 로딩 중..." />
@@ -164,10 +196,10 @@ export default function InterviewResultPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">면접 결과</h1>
           <p className="text-gray-600">
-            총 {interviewResult.questionCount}개의 질문에 답변하셨습니다.
+            총 {interviewSession.questionCount}개의 질문에 답변하셨습니다.
           </p>
           <p className="text-sm text-gray-500">
-            {new Date(interviewResult.createdAt).toLocaleString('ko-KR')}
+            {new Date(interviewSession.createdAt).toLocaleString('ko-KR')}
           </p>
         </div>
 
@@ -178,10 +210,10 @@ export default function InterviewResultPage() {
             종합 피드백
           </h2>
           
-          {interviewResult.overallReview ? (
+          {evaluation?.overallReview ? (
             <div className="bg-white p-6 rounded-lg shadow-sm">
               <p className="text-gray-800 leading-relaxed whitespace-pre-line">
-                {interviewResult.overallReview}
+                {evaluation.overallReview}
               </p>
             </div>
           ) : (
@@ -208,25 +240,25 @@ export default function InterviewResultPage() {
         <div className="space-y-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">질문별 답변</h2>
           
-          {interviewResult.questions && interviewResult.questions.length > 0 ? (
-            interviewResult.questions.map((item, index) => {
-              // ===== [진단] 각 질문 객체의 전체 구조 확인 =====
-              console.log('========================================');
-              console.log(`[결과 페이지] 질문 ${index + 1} 렌더링 데이터:`, item);
-              console.log('[결과 페이지] - item.id:', item.id);
-              console.log('[결과 페이지] - item.question:', item.question?.substring(0, 50) + '...');
-              console.log('[결과 페이지] - item.aiFeedback:', item.aiFeedback);
-              console.log('[결과 페이지] - item.feedback:', item.feedback);
-              console.log('[결과 페이지] - item.aiEvaluation:', item.aiEvaluation);
-              console.log('[결과 페이지] - 모든 키:', Object.keys(item).join(', '));
-              console.log('========================================');
+          {interviewSession.questions && interviewSession.questions.length > 0 ? (
+            interviewSession.questions.map((item, index) => {
+              // ===== [5대 컬렉션] evaluation에서 해당 질문의 피드백 찾기 =====
+              const questionEval = evaluation?.questionEvaluations?.find(
+                qe => qe.qId === item.qId
+              );
+              const feedbackText = questionEval?.feedback || null;
+              
+              console.log(`[결과 페이지] 질문 ${index + 1} (${item.qId}):`, {
+                question: item.question?.substring(0, 30) + '...',
+                hasFeedback: !!feedbackText
+              });
               
               return (
-                <Card key={item.id || index}>
+                <Card key={item.qId || index}>
                   {/* 질문 */}
                   <div className="mb-4 pb-4 border-b border-gray-200">
                     <span className="text-sm font-bold text-primary-600 mb-2 block">
-                      질문 {item.id || index + 1}
+                      질문 {item.qId || index + 1}
                     </span>
                     <p className="text-lg font-bold text-gray-900">
                       {item.question}
@@ -248,10 +280,10 @@ export default function InterviewResultPage() {
                   )}
                   
                   {/* STT 텍스트 */}
-                  {item.answer && (
+                  {item.answerTranscript && (
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <p className="text-gray-700 whitespace-pre-line">
-                        {item.answer}
+                        {item.answerTranscript}
                       </p>
                     </div>
                   )}
@@ -270,43 +302,27 @@ export default function InterviewResultPage() {
                     AI 코멘트
                   </h4>
                   
-                  {(() => {
-                    // ===== [수정] 다양한 필드 경로를 지원하는 견고한 매핑 로직 =====
-                    const feedbackText = 
-                      item.aiFeedback?.feedback ||  // { aiFeedback: { feedback: "..." } }
-                      item.aiFeedback?.content ||   // { aiFeedback: { content: "..." } }
-                      (typeof item.aiFeedback === 'string' ? item.aiFeedback : null) || // { aiFeedback: "..." }
-                      item.feedback ||               // { feedback: "..." }
-                      item.aiEvaluation?.feedback || // { aiEvaluation: { feedback: "..." } }
-                      null;
-                    
-                    console.log(`[결과 페이지] 질문 ${index + 1} 최종 feedbackText:`, feedbackText);
-                    
-                    // "피드백 생성 중..."은 로딩으로 간주
-                    const isLoading = !feedbackText || feedbackText === '피드백 생성 중...';
-                    
-                    return isLoading ? (
-                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-center">
-                        <div className="inline-block animate-pulse mb-2">
-                          <div className="text-2xl">🤔</div>
-                        </div>
-                        <p className="text-sm text-gray-600">
-                          AI가 이 답변을 분석하고 있습니다...
-                        </p>
-                        <div className="flex justify-center items-center gap-1 mt-2">
-                          <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                          <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                          <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                        </div>
+                  {feedbackText ? (
+                    <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
+                      <p className="text-gray-800 leading-relaxed whitespace-pre-line">
+                        {feedbackText}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-center">
+                      <div className="inline-block animate-pulse mb-2">
+                        <div className="text-2xl">🤔</div>
                       </div>
-                    ) : (
-                      <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
-                        <p className="text-gray-800 leading-relaxed whitespace-pre-line">
-                          {feedbackText}
-                        </p>
+                      <p className="text-sm text-gray-600">
+                        AI가 이 답변을 분석하고 있습니다...
+                      </p>
+                      <div className="flex justify-center items-center gap-1 mt-2">
+                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                       </div>
-                    );
-                  })()}
+                    </div>
+                  )}
                 </div>
               </Card>
               );

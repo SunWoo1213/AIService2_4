@@ -33,25 +33,25 @@ export async function POST(request) {
       );
     }
     
-    // ===== [1단계] [단일 문서] interview_results에서 조회 =====
-    console.log('[종합 피드백 API] 🔍 1단계: interview_results 조회 중...');
-    console.log('[종합 피드백 API] - 문서 경로: interview_results/' + interviewId);
-    console.log('[종합 피드백 API] 💡 단일 문서 구조 사용');
+    // ===== [1단계] [5대 컬렉션] interview_sessions에서 답변 조회 =====
+    console.log('[종합 피드백 API] 🔍 1단계: interview_sessions 조회 중...');
+    console.log('[종합 피드백 API] - 문서 경로: interview_sessions/' + interviewId);
+    console.log('[종합 피드백 API] 💡 5대 컬렉션 구조: 답변과 평가 분리');
     
     const { doc, getDoc } = await import('firebase/firestore');
-    const docRef = doc(db, 'interview_results', interviewId);
-    const docSnapshot = await getDoc(docRef);
+    const sessionRef = doc(db, 'interview_sessions', interviewId);
+    const sessionSnapshot = await getDoc(sessionRef);
     
-    if (!docSnapshot.exists()) {
-      console.warn('[종합 피드백 API] ⚠️ interview_results 문서가 없습니다.');
+    if (!sessionSnapshot.exists()) {
+      console.warn('[종합 피드백 API] ⚠️ interview_sessions 문서가 없습니다.');
       return NextResponse.json(
-        { error: 'interview_results 문서를 찾을 수 없습니다.' },
+        { error: 'interview_sessions 문서를 찾을 수 없습니다.' },
         { status: 404 }
       );
     }
     
-    const interviewData = docSnapshot.data();
-    const answers = interviewData.questions || [];
+    const sessionData = sessionSnapshot.data();
+    const answers = sessionData.questions || [];
     
     console.log('[종합 피드백 API] 📊 조회 결과:', answers.length, '개의 답변');
     
@@ -71,9 +71,9 @@ export async function POST(request) {
     // 답변 내용을 텍스트로 구성 (질문 ID 포함)
     const answersText = answers.map((answer, index) => {
       return `
-**질문 ID**: ${answer.id || `q${index + 1}`}
+**질문 ID**: ${answer.qId || answer.id || `q${index + 1}`}
 **질문 ${index + 1}**: ${answer.question}
-**답변**: ${answer.answer || answer.transcript}
+**답변**: ${answer.answerTranscript || answer.answer || answer.transcript}
 **답변 시간**: ${answer.duration}초
 `;
     }).join('\n---\n');
@@ -152,15 +152,14 @@ ${answersText}
     console.log('[종합 피드백 API] - overallReview 길이:', feedbackData.overallReview?.length || 0, 'bytes');
     console.log('[종합 피드백 API] - questionFeedbacks 개수:', feedbackData.questionFeedbacks?.length || 0);
     
-    // ===== [4단계] [단일 문서] interview_results 업데이트 =====
-    console.log('[종합 피드백 API] 💾 4단계: interview_results 업데이트 중...');
-    console.log('[종합 피드백 API] - 문서 경로: interview_results/' + interviewId);
-    console.log('[종합 피드백 API] - 필드: overallReview + questions[].aiFeedback 병합');
-    console.log('[종합 피드백 API] 💡 단일 문서 구조: 기존 문서에 피드백 추가');
+    // ===== [4단계] [5대 컬렉션] interview_evaluations에 피드백 저장 =====
+    console.log('[종합 피드백 API] 💾 4단계: interview_evaluations 저장 중...');
+    console.log('[종합 피드백 API] - 문서 ID: eval_' + interviewId);
+    console.log('[종합 피드백 API] 💡 5대 컬렉션 구조: 답변과 평가를 분리하여 저장');
     
-    // ===== [핵심] questions 배열에 aiFeedback 병합 =====
-    const updatedQuestions = answers.map((question, index) => {
-      const questionId = question.id || `q${index + 1}`;
+    // ===== [핵심] questionEvaluations 배열 구성 =====
+    const questionEvaluations = answers.map((question, index) => {
+      const questionId = question.qId || question.id || `q${index + 1}`;
       
       // questionFeedbacks에서 해당 질문의 피드백 찾기
       const feedbackItem = feedbackData.questionFeedbacks?.find(
@@ -170,40 +169,44 @@ ${answersText}
       // ===== [진단] 피드백 데이터 상세 로깅 =====
       console.log(`[종합 피드백 API] ===== 질문 ${index + 1} (ID: ${questionId}) =====`);
       console.log('[종합 피드백 API] - feedbackItem 존재:', !!feedbackItem);
-      console.log('[종합 피드백 API] - feedbackItem 전체:', feedbackItem);
-      console.log('[종합 피드백 API] - feedbackItem.feedback:', feedbackItem?.feedback);
-      console.log('[종합 피드백 API] - feedbackItem.id:', feedbackItem?.id);
+      console.log('[종합 피드백 API] - feedbackItem.feedback:', feedbackItem?.feedback?.substring(0, 50) + '...');
       
-      // 기존 질문 데이터에 aiFeedback 필드 추가 (문자열로 직접 저장)
-      const aiFeedbackText = feedbackItem?.feedback || null;
-      
-      console.log('[종합 피드백 API] - 저장될 aiFeedback:', aiFeedbackText ? '✅ ' + aiFeedbackText.substring(0, 50) + '...' : '⚠️ null');
+      const feedbackText = feedbackItem?.feedback || '';
+      console.log('[종합 피드백 API] - 저장될 feedback:', feedbackText ? '✅ 있음' : '⚠️ 없음');
       
       return {
-        ...question,
-        aiFeedback: aiFeedbackText  // 문자열로 직접 저장 (null이면 프론트엔드에서 로딩 표시)
+        qId: questionId,
+        feedback: feedbackText
       };
     });
     
-    console.log('[종합 피드백 API] ✅ questions 배열 aiFeedback 병합 완료:', updatedQuestions.length, '개');
+    console.log('[종합 피드백 API] ✅ questionEvaluations 배열 구성 완료:', questionEvaluations.length, '개');
     
-    // interview_results 문서 업데이트
-    const { updateDoc } = await import('firebase/firestore');
-    const updateDocRef = doc(db, 'interview_results', interviewId);
+    // interview_evaluations 문서 생성
+    const { setDoc } = await import('firebase/firestore');
+    const evaluationId = `eval_${interviewId}`;
+    const evaluationRef = doc(db, 'interview_evaluations', evaluationId);
     
-    await updateDoc(updateDocRef, {
+    const evaluationData = {
+      evaluationId: evaluationId,
+      interviewId: interviewId,
+      userId: userId,
       overallReview: feedbackData.overallReview,
-      questions: updatedQuestions, // aiFeedback이 병합된 배열
-      feedbackGeneratedAt: Timestamp.now(),
-      updatedAt: new Date().toISOString()
-    });
+      questionEvaluations: questionEvaluations,
+      modelVersion: 'gpt-4o-mini',
+      generatedAt: Timestamp.now(),
+      createdAt: Timestamp.now()
+    };
+    
+    await setDoc(evaluationRef, evaluationData);
     
     console.log('========================================');
     console.log('[종합 피드백 API] ✅✅✅ 성공! ✅✅✅');
-    console.log('[종합 피드백 API] - 문서 ID:', interviewId);
-    console.log('[종합 피드백 API] - 컬렉션: interview_results');
+    console.log('[종합 피드백 API] - 평가 ID:', evaluationId);
+    console.log('[종합 피드백 API] - 컬렉션: interview_evaluations (5대 컬렉션)');
+    console.log('[종합 피드백 API] - 연결된 면접 ID:', interviewId);
     console.log('[종합 피드백 API] - 완료 시각:', new Date().toISOString());
-    console.log('[종합 피드백 API] 💡 onSnapshot이 자동으로 프론트엔드를 업데이트합니다!');
+    console.log('[종합 피드백 API] 💡 프론트엔드에서 interview_evaluations를 조회하여 표시합니다!');
     console.log('========================================');
     
     return NextResponse.json({

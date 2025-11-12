@@ -38,15 +38,15 @@ export default function HistoryPage() {
       }
 
       try {
-        // ===== [디버깅 2단계] 쿼리 조건 확인 =====
+        // ===== [5대 컬렉션] interview_sessions 조회 =====
         console.log('[히스토리 페이지] 🔍 Firestore 데이터 조회 시작');
-        console.log('[히스토리 페이지] - 컬렉션 경로: feedbacks');
+        console.log('[히스토리 페이지] - 컬렉션 경로: interview_sessions (5대 컬렉션)');
         console.log('[히스토리 페이지] - 쿼리 조건: userId == ' + user.uid);
         console.log('[히스토리 페이지] - 정렬 조건: createdAt desc');
         
-        const feedbacksRef = collection(db, 'feedbacks');
+        const sessionsRef = collection(db, 'interview_sessions');
         const q = query(
-          feedbacksRef,
+          sessionsRef,
           where('userId', '==', user.uid),
           orderBy('createdAt', 'desc')
         );
@@ -64,53 +64,35 @@ export default function HistoryPage() {
         querySnapshot.forEach((doc) => {
           console.log('[히스토리 페이지] 📄 문서 ID:', doc.id);
           console.log('[히스토리 페이지] - doc.exists():', doc.exists());
-          console.log('[히스토리 페이지] - doc.data():', doc.data());
+          const data = doc.data();
+          console.log('[히스토리 페이지] - status:', data.status);
+          console.log('[히스토리 페이지] - questionCount:', data.questionCount);
           
-          feedbackList.push({ id: doc.id, ...doc.data() });
+          // interview_sessions는 모두 면접 데이터이므로 type 필드 추가 (호환성)
+          feedbackList.push({ 
+            id: doc.id, 
+            type: 'interview', // HistoryList 컴포넌트 호환성
+            interviewId: doc.id,
+            ...data 
+          });
         });
         
-        console.log('[히스토리 페이지] ✅ 총', feedbackList.length, '개의 피드백 데이터 로드됨');
+        console.log('[히스토리 페이지] ✅ 총', feedbackList.length, '개의 면접 세션 로드됨 (5대 컬렉션)');
         
-        // ===== [1단계 진단] 첫 번째 문서 전체 구조 출력 =====
+        // ===== [5대 컬렉션] 첫 번째 세션 구조 출력 =====
         if (feedbackList.length > 0) {
           console.log('========================================');
-          console.log('[진단 1단계] 📋 첫 번째 문서 전체 구조:');
-          console.log(JSON.stringify(feedbackList[0], null, 2));
-          console.log('========================================');
-          
-          console.log('[진단 1단계] 🔍 면접 타입 문서 분석:');
-          const interviewDocs = feedbackList.filter(f => f.type === 'interview');
-          if (interviewDocs.length > 0) {
-            const firstInterview = interviewDocs[0];
-            console.log('[진단 1단계] - 문서 ID:', firstInterview.id);
-            console.log('[진단 1단계] - type:', firstInterview.type);
-            console.log('[진단 1단계] - interviewId 존재:', !!firstInterview.interviewId);
-            console.log('[진단 1단계] - interviewId 값:', firstInterview.interviewId);
-            console.log('[진단 1단계] - overallFeedback 존재:', !!firstInterview.overallFeedback);
-            console.log('[진단 1단계] - overallFeedback 타입:', typeof firstInterview.overallFeedback);
-            
-            if (firstInterview.overallFeedback) {
-              console.log('[진단 1단계] ✅ overallFeedback 필드 발견!');
-              console.log('[진단 1단계] - overallFeedback 키:', Object.keys(firstInterview.overallFeedback));
-              console.log('[진단 1단계] - strengths 존재:', !!firstInterview.overallFeedback.strengths);
-              console.log('[진단 1단계] - weaknesses 존재:', !!firstInterview.overallFeedback.weaknesses);
-              console.log('[진단 1단계] - summary 존재:', !!firstInterview.overallFeedback.summary);
-            } else {
-              console.warn('[진단 1단계] ⚠️ overallFeedback 필드가 없습니다!');
-              console.warn('[진단 1단계] 💡 면접 완료 후 종합 피드백 생성이 안 되었을 수 있습니다.');
-            }
-            
-            console.log('[진단 1단계] - resumeText 존재:', !!firstInterview.resumeText);
-            console.log('[진단 1단계] - jobKeywords 존재:', !!firstInterview.jobKeywords);
-            console.log('[진단 1단계] - tonePreference:', firstInterview.tonePreference);
-            console.log('[진단 1단계] - createdAt:', firstInterview.createdAt);
-            console.log('[진단 1단계] - feedbackGeneratedAt 존재:', !!firstInterview.feedbackGeneratedAt);
-          } else {
-            console.warn('[진단 1단계] ⚠️ interview 타입 문서가 없습니다!');
-          }
+          console.log('[5대 컬렉션] 📋 첫 번째 interview_session:');
+          const firstSession = feedbackList[0];
+          console.log('[5대 컬렉션] - 문서 ID:', firstSession.id);
+          console.log('[5대 컬렉션] - interviewId:', firstSession.interviewId);
+          console.log('[5대 컬렉션] - status:', firstSession.status);
+          console.log('[5대 컬렉션] - questionCount:', firstSession.questionCount);
+          console.log('[5대 컬렉션] - questions 개수:', firstSession.questions?.length);
+          console.log('[5대 컬렉션] 💡 평가는 interview_evaluations에서 별도 조회됩니다.');
           console.log('========================================');
         } else {
-          console.warn('[히스토리 페이지] ⚠️ 경고: 피드백 데이터가 0개입니다!');
+          console.warn('[히스토리 페이지] ⚠️ 경고: 면접 세션 데이터가 0개입니다!');
         }
         console.log('========================================');
         

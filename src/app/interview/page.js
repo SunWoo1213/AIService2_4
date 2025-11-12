@@ -200,34 +200,44 @@ export default function InterviewPage() {
       
       console.log('[면접 완료] ✅ 답변 정렬 완료:', questionsList.map(q => `Q${q.id}`).join(', '));
       
-      // 3단계: interview_results에 단일 문서로 저장
-      console.log('[면접 완료] 💾 2단계: interview_results 저장 중...');
+      // ===== [5대 컬렉션] interview_sessions에 답변만 저장 (피드백 제외) =====
+      console.log('[면접 완료] 💾 2단계: interview_sessions 저장 중...');
       console.log('[면접 완료] 💡 문서 ID:', interviewId, '(interviewId와 동일)');
+      console.log('[면접 완료] 💡 5대 컬렉션 구조: 답변과 평가를 분리하여 저장');
       
-      const interviewResult = {
-        userId: user.uid,
+      // questions 배열에서 aiFeedback 제거 (답변만 저장)
+      const cleanedQuestions = questionsList.map(q => ({
+        qId: q.id,
+        question: q.question,
+        answerTranscript: q.answer,
+        audioUrl: q.audioUrl,
+        duration: q.duration,
+        recordedAt: q.createdAt || new Date().toISOString()
+      }));
+      
+      const interviewSession = {
         interviewId: interviewId,
-        resumeText: selectedFeedback?.resumeText || '',
-        jobKeywords: selectedFeedback?.jobKeywords || {},
+        userId: user.uid,
+        jobPostingId: selectedFeedback?.jobPostingId || null,
+        status: 'completed',
+        questionCount: cleanedQuestions.length,
+        questions: cleanedQuestions, // ✅ 답변만 포함 (피드백 제외)
         tonePreference: selectedTone || defaultTone,
-        questions: questionsList, // ✅ 모든 답변 포함
-        overallFeedback: null, // 나중에 생성될 종합 피드백
-        questionCount: questionsList.length,
         createdAt: new Date().toISOString(),
-        timestamp: Timestamp.now(),
-        completedAt: new Date().toISOString()
+        completedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       };
       
       // setDoc으로 문서 ID 지정 (interviewId = 문서 ID)
-      const docRef = doc(db, 'interview_results', interviewId);
-      await setDoc(docRef, interviewResult);
+      const docRef = doc(db, 'interview_sessions', interviewId);
+      await setDoc(docRef, interviewSession);
       
       console.log('========================================');
-      console.log('[면접 완료] ✅✅✅ interview_results 저장 성공! ✅✅✅');
-      console.log('[면접 완료] - 컬렉션: interview_results');
+      console.log('[면접 완료] ✅✅✅ interview_sessions 저장 성공! ✅✅✅');
+      console.log('[면접 완료] - 컬렉션: interview_sessions (5대 컬렉션)');
       console.log('[면접 완료] - 문서 ID:', interviewId);
-      console.log('[면접 완료] - 포함된 질문 수:', questionsList.length);
-      console.log('[면접 완료] 💡 단일 문서에 모든 데이터가 저장되었습니다!');
+      console.log('[면접 완료] - 포함된 질문 수:', cleanedQuestions.length);
+      console.log('[면접 완료] 💡 답변만 저장되었습니다. 피드백은 interview_evaluations에 별도 저장됩니다.');
       console.log('========================================');
       
       // 결과 페이지로 리다이렉트
