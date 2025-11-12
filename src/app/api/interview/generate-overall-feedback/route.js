@@ -3,10 +3,8 @@ import { db } from '@/firebase/config';
 import { collection, query, where, getDocs, doc, updateDoc, Timestamp } from 'firebase/firestore';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
+// ===== [빌드 에러 해결] OpenAI 인스턴스를 함수 내부에서 생성 =====
+// 이유: 빌드 시 환경 변수가 없어도 에러가 발생하지 않도록
 export async function POST(request) {
   console.log('========================================');
   console.log('[종합 피드백 API] POST 요청 수신');
@@ -124,6 +122,11 @@ ${answersText}
     console.log('[종합 피드백 API] 🤖 3단계: LLM API 호출 중...');
     console.log('[종합 피드백 API] - 모델: gpt-4o');
     console.log('[종합 피드백 API] - 호출 시각:', new Date().toISOString());
+    
+    // OpenAI 인스턴스 생성 (함수 내부에서 생성하여 빌드 에러 방지)
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
     
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
